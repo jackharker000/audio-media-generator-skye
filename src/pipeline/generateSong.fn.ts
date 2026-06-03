@@ -7,14 +7,11 @@ import { buildKnowledgeMap } from "./stages/knowledgeMap";
 import {
   buildSongPlan,
   draftLyrics,
-  critiqueLyrics,
-  rewriteLyrics,
-  factCheckLyrics,
   buildMusicRequest,
   makeTitle,
-  dropContradictedLines,
   draftFromText,
 } from "./stages/songwriting";
+import { refineAndVerify, type StageRunner } from "./refine";
 import { resolveProviderChain } from "@/music/registry";
 import { fetchExternalToBlob } from "@/storage";
 import type { StageName } from "@/shared/types";
@@ -186,34 +183,17 @@ export const generateSong = inngest.createFunction(
       ? draftFromText(input.lyricsOverride)
       : await runStage(step, jobId, "lyric_draft", "lyric_draft", () => draftLyrics(plan, km));
 
-    // Stages 6-7: bounded critique → rewrite loop
-    const maxRewrites = env.maxRewrites();
-    for (let i = 0; i <= maxRewrites; i++) {
-      const critique = await runStage(step, jobId, `critique-${i}`, "critique", () =>
-        critiqueLyrics(draft, km, plan, input),
-      );
-      if (critique.pass || i === maxRewrites) break;
-      draft = await runStage(step, jobId, `rewrite-${i}`, "rewrite", () =>
-        rewriteLyrics(draft, km, plan, critique),
-      );
-    }
-
-    // Stage 8: independent fact-check gate
-    const grounding = await runStage(step, jobId, "fact_check", "fact_check", () =>
-      factCheckLyrics(draft, km),
-    );
-    if (grounding.hardFail) {
-      const repaired = dropContradictedLines(draft, grounding);
-      const recheck = await runStage(step, jobId, "fact_check_recheck", "fact_check", () =>
-        factCheckLyrics(repaired, km),
-      );
-      if (recheck.hardFail) {
-        throw new NonRetriableError(
-          "Couldn't verify some lyrics against your sources. Try narrowing the focus or providing clearer source text.",
-        );
-      }
-      draft = repaired;
-    }
+    // Stages 6-8: critique → rewrite loop + independent fact-check gate
+    const runner: StageRunner = {
+      run: (stepId, stage, fn) => runStage(step, jobId, stepId, stage, fn),
+    };
+    draft = await refineAndVerify(runner, {
+      draft,
+      km,
+      plan,
+      input,
+      maxRewrites: env.maxRewrites(),
+    });
 
     // Stage 9: style params
     const musicReq = await runStage(step, jobId, "style_params", "style_params", () =>
