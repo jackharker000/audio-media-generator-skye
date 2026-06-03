@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   generationJobs,
@@ -215,8 +215,7 @@ export async function incrementSongCount(userId: string): Promise<void> {
     });
 }
 
-// Small helper to express `songs_generated + 1` without importing sql at top.
-import { sql } from "drizzle-orm";
+// Expresses `songs_generated + 1` for the upsert.
 function sqlInc() {
   return sql`${usageCounters.songsGenerated} + 1`;
 }
