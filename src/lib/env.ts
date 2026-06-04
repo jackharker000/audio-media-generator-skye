@@ -35,12 +35,22 @@ export const env = {
     optionalEnv("APP_URL") ??
     optionalEnv("NEXT_PUBLIC_APP_URL") ??
     (process.env.NODE_ENV === "production" ? DEFAULT_SITE_URL : "http://localhost:3000"),
-  /** All configured Gemini keys (GEMINI_API_KEYS csv + GEMINI_API_KEY), deduped. */
+  /**
+   * All Gemini keys, auto-discovered from ANY env var whose name contains
+   * "API_KEY" (e.g. GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEYS=csv).
+   * Comma-separated values are split. Deduped.
+   */
   geminiKeys: (): string[] => {
-    const list = (optionalEnv("GEMINI_API_KEYS") ?? "").split(",");
-    const single = optionalEnv("GEMINI_API_KEY");
-    if (single) list.push(single);
-    return Array.from(new Set(list.map((k) => k.trim()).filter(Boolean)));
+    const out: string[] = [];
+    for (const [name, value] of Object.entries(process.env)) {
+      if (!value || /^NEXT_PUBLIC/i.test(name)) continue;
+      if (!/api_?key/i.test(name)) continue;
+      for (const part of value.split(",")) {
+        const k = part.trim();
+        if (k) out.push(k);
+      }
+    }
+    return Array.from(new Set(out));
   },
   geminiApiKey: () => env.geminiKeys()[0],
   musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "gemini-tts",

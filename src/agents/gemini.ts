@@ -5,10 +5,11 @@ import { sleep } from "@/lib/utils";
 
 /**
  * Gemini wrapper used by every text stage. Free-tier friendly:
- *  - **Key rotation**: set GEMINI_API_KEYS=key1,key2,... (from different Google
- *    projects, each with its own free quota). Calls round-robin across keys and
- *    fail over instantly when one is rate-limited.
- *  - Defaults to Flash-Lite (higher free quota); override with GEMINI_MODEL* env.
+ *  - **Key rotation**: every env var containing "API_KEY" is a candidate key
+ *    (from different Google projects, each with its own free quota). Calls
+ *    round-robin across keys and fail over instantly when one is rate-limited;
+ *    keys that report as invalid are dropped for the process.
+ *  - Defaults to Flash-Lite (cheaper, higher free quota); override via GEMINI_MODEL*.
  *  - JSON validated against a Zod schema, with one self-correcting retry.
  */
 
@@ -16,8 +17,6 @@ export type GeminiModel = "flash" | "flash-lite";
 
 const DEFAULT_MODEL = optionalEnv("GEMINI_MODEL") ?? "gemini-2.5-flash-lite";
 const MODEL_IDS: Record<GeminiModel, string> = {
-  // Both default to Flash-Lite. Set GEMINI_MODEL_FLASH=gemini-2.5-flash to use
-  // Flash for the reasoning stages (needs more quota / billing).
   flash: optionalEnv("GEMINI_MODEL_FLASH") ?? DEFAULT_MODEL,
   "flash-lite": optionalEnv("GEMINI_MODEL_FLASH_LITE") ?? DEFAULT_MODEL,
 };
@@ -26,6 +25,7 @@ const MODEL_IDS: Record<GeminiModel, string> = {
 
 const clients = new Map<string, GoogleGenAI>();
 const cooldownUntil = new Map<string, number>(); // key -> epoch ms usable again
+const invalidKeys = new Set<string>(); // keys that returned "invalid" this process
 let rrCursor = 0;
 
 function clientFor(key: string): GoogleGenAI {
@@ -37,11 +37,12 @@ function clientFor(key: string): GoogleGenAI {
   return c;
 }
 
-/** Next key not currently cooling down (round-robin), or null if all cooling. */
+/** Next usable key (round-robin), skipping invalid/cooling keys, or null. */
 function pickKey(keys: string[]): string | null {
   const now = Date.now();
   for (let i = 0; i < keys.length; i++) {
     const k = keys[(rrCursor + i) % keys.length];
+    if (invalidKeys.has(k)) continue;
     if ((cooldownUntil.get(k) ?? 0) <= now) {
       rrCursor = (rrCursor + i + 1) % keys.length;
       return k;
@@ -51,7 +52,8 @@ function pickKey(keys: string[]): string | null {
 }
 
 function soonestAvailable(keys: string[]): number {
-  return Math.min(...keys.map((k) => cooldownUntil.get(k) ?? 0));
+  const valid = keys.filter((k) => !invalidKeys.has(k));
+  return valid.length ? Math.min(...valid.map((k) => cooldownUntil.get(k) ?? 0)) : Date.now();
 }
 
 function isRetryable(err: unknown): boolean {
@@ -65,6 +67,16 @@ function isRetryable(err: unknown): boolean {
     msg.includes("500") ||
     msg.includes("unavailable") ||
     msg.includes("overloaded")
+  );
+}
+
+function isInvalidKey(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes("api key not valid") ||
+    msg.includes("api_key_invalid") ||
+    msg.includes("invalid api key") ||
+    (msg.includes("400") && msg.includes("api key"))
   );
 }
 
@@ -86,18 +98,23 @@ async function callModel(opts: {
   maxRetries?: number;
 }): Promise<string> {
   const keys = env.geminiKeys();
-  if (keys.length === 0) throw new Error("No GEMINI_API_KEY / GEMINI_API_KEYS configured.");
+  if (keys.length === 0) throw new Error("No Gemini API key configured (set GEMINI_API_KEY).");
   const maxRetries = opts.maxRetries ?? Math.max(6, keys.length * 2);
   let attempt = 0;
+  let lastErr: unknown;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    if (keys.every((k) => invalidKeys.has(k))) {
+      throw lastErr ?? new Error("All configured Gemini API keys are invalid.");
+    }
+
     let key = pickKey(keys);
     if (!key) {
-      // All keys cooling down — wait until the soonest is free (capped).
       const waitMs = Math.min(Math.max(soonestAvailable(keys) - Date.now(), 800), 60_000);
       await sleep(waitMs + Math.random() * 300);
-      key = pickKey(keys) ?? keys[0];
+      key = pickKey(keys);
+      if (!key) continue; // all still cooling/invalid — re-evaluate
     }
 
     try {
@@ -115,9 +132,13 @@ async function callModel(opts: {
       if (!text) throw new Error("Empty response from Gemini");
       return text;
     } catch (err) {
+      lastErr = err;
       attempt++;
+      if (isInvalidKey(err)) {
+        invalidKeys.add(key); // drop this key and try another
+        continue;
+      }
       if (!isRetryable(err)) throw err;
-      // Put this key on cooldown for the suggested delay, then try another key.
       const delaySec = parseRetryDelaySec(err) ?? Math.min(2 ** attempt, 30);
       cooldownUntil.set(key, Date.now() + delaySec * 1000);
       if (attempt > maxRetries) throw err;
