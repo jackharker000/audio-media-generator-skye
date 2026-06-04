@@ -173,15 +173,15 @@ function extractJson(text: string): string {
   return body.slice(start).trim();
 }
 
-export async function generateJson<T>(opts: {
+export async function generateJson<S extends z.ZodTypeAny>(opts: {
   model?: GeminiModel;
   system?: string;
   prompt: string;
-  schema: z.ZodType<T>;
+  schema: S;
   temperature?: number;
   maxOutputTokens?: number;
   parts?: ContentPart[];
-}): Promise<T> {
+}): Promise<z.infer<S>> {
   const model = opts.model ?? "flash";
   const baseParts: ContentPart[] = opts.parts ?? [];
   const parts: ContentPart[] = [...baseParts, { text: opts.prompt }];
@@ -195,7 +195,7 @@ export async function generateJson<T>(opts: {
     maxOutputTokens: opts.maxOutputTokens,
   });
 
-  const tryParse = (s: string): T => opts.schema.parse(JSON.parse(extractJson(s)));
+  const tryParse = (s: string): z.infer<S> => opts.schema.parse(JSON.parse(extractJson(s)));
 
   try {
     return tryParse(raw);

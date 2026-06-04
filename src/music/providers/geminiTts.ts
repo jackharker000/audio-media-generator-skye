@@ -1,13 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { env, features, optionalEnv } from "@/lib/env";
 import { putObject } from "@/storage";
+import { bufferToInt16LE, wavEncode } from "../audio";
 import type { MusicProvider, MusicRequest, MusicResult } from "../types";
 
 /**
- * Music engine using **Gemini TTS** — runs on the same free AI Studio
- * GEMINI_API_KEY (no Google Cloud billing, unlike Cloud Text-to-Speech).
- * Gemini speaks/raps the lyrics with a musical, rhythmic delivery. Output is
- * raw PCM, which we wrap into a WAV container. Synchronous — no webhooks.
+ * Gemini TTS speech (no Google Cloud billing — uses the AI Studio key).
+ * `geminiSpeechPcm` returns the raw vocal PCM so the song engine can mix music
+ * under it; the `gemini-tts` provider just wraps that PCM as a WAV (voice only).
  */
 
 function stripTags(lyrics: string): string {
@@ -44,30 +44,6 @@ function sampleRateFromMime(mime: string): number {
   return m ? parseInt(m[1], 10) : 24000;
 }
 
-/** Wrap raw little-endian 16-bit mono PCM in a minimal WAV header. */
-function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
-  const channels = 1;
-  const bits = 16;
-  const byteRate = (sampleRate * channels * bits) / 8;
-  const blockAlign = (channels * bits) / 8;
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0);
-  h.writeUInt32LE(36 + pcm.length, 4);
-  h.write("WAVE", 8);
-  h.write("fmt ", 12);
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20); // PCM
-  h.writeUInt16LE(channels, 22);
-  h.writeUInt32LE(sampleRate, 24);
-  h.writeUInt32LE(byteRate, 28);
-  h.writeUInt16LE(blockAlign, 32);
-  h.writeUInt16LE(bits, 34);
-  h.write("data", 36);
-  h.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([h, pcm]);
-}
-
-// Tolerate model-name drift across Gemini TTS releases.
 const candidateModels = (): string[] =>
   [
     optionalEnv("GEMINI_TTS_MODEL"),
@@ -76,14 +52,16 @@ const candidateModels = (): string[] =>
     "gemini-2.5-pro-preview-tts",
   ].filter(Boolean) as string[];
 
-async function synthesize(req: MusicRequest): Promise<Buffer> {
+/** Synthesize the lyrics to raw PCM, rotating across keys and tolerating model drift. */
+export async function geminiSpeechPcm(
+  req: MusicRequest,
+): Promise<{ pcm: Int16Array; sampleRate: number }> {
   const keys = env.geminiKeys();
   if (keys.length === 0) throw new Error("No Gemini key configured for TTS");
   const prompt = buildPrompt(req);
   const voiceName = pickVoice(req);
   let lastErr: unknown;
 
-  // Rotate across keys (each project has its own quota) and tolerate model drift.
   for (const key of keys) {
     const ai = new GoogleGenAI({ apiKey: key });
     for (const model of candidateModels()) {
@@ -101,7 +79,7 @@ async function synthesize(req: MusicRequest): Promise<Buffer> {
         const b64: string | undefined = audio?.inlineData?.data;
         const mime: string = audio?.inlineData?.mimeType ?? "audio/L16;rate=24000";
         if (!b64) throw new Error("no audio in response");
-        return pcmToWav(Buffer.from(b64, "base64"), sampleRateFromMime(mime));
+        return { pcm: bufferToInt16LE(Buffer.from(b64, "base64")), sampleRate: sampleRateFromMime(mime) };
       } catch (e) {
         lastErr = e;
       }
@@ -126,9 +104,9 @@ export const geminiTts: MusicProvider = {
     if (!features.hasGemini()) {
       throw new Error("GEMINI_API_KEY not set — Gemini TTS can't run.");
     }
-    const wav = await synthesize(req);
+    const { pcm, sampleRate } = await geminiSpeechPcm(req);
     const key = `songs/${jobId}.wav`;
-    await putObject(key, wav, "audio/wav");
+    await putObject(key, wavEncode(pcm, sampleRate), "audio/wav");
     return { storageKey: key, contentType: "audio/wav" };
   },
 };

@@ -231,9 +231,14 @@ export function styleParamsPrompt(plan: SongPlan, input: JobInputParams): Prompt
 - genre: the primary genre
 - voice: {gender?, style?: "sung|rap|spoken", descriptor?}
 
+Also design a simple musical ARRANGEMENT that a basic synthesizer can play:
+- key (e.g. "C major"); tempoBpm (60-160, fitting the mood)
+- chords: a 4-8 chord progression that loops; each {"root":"C","quality":"maj|min|maj7|min7|dom7|sus4|dim|aug","beats":4}
+- drums: which 16th-note steps (0-15) hit per bar: {"kick":[...],"snare":[...],"hihat":[...]}
+
 Do NOT include the lyrics in styleTags. Keep styleTags under ~200 characters.
 
-Return JSON: {"lyrics":"","styleTags":"...","durationSec":${plan.targetDurationSec},"genre":"...","voice":{...}}
+Return JSON: {"lyrics":"","styleTags":"...","durationSec":${plan.targetDurationSec},"genre":"...","voice":{...},"arrangement":{"key":"...","tempoBpm":100,"chords":[{"root":"C","quality":"maj","beats":4}],"drums":{"kick":[0,8],"snare":[4,12],"hihat":[0,2,4,6,8,10,12,14]}}}
 (Leave "lyrics" as an empty string — it will be filled in by the system.)
 
 SONG PLAN: ${JSON.stringify({ genre: plan.genre, mood: plan.mood, tempoBpm: plan.tempoBpm, voiceHint: plan.voiceHint })}`,

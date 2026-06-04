@@ -1,13 +1,17 @@
-# Backing beats (optional)
+# Backing beats / loops (optional)
 
-The free `google-tts-beat` music provider speaks/raps the lyrics over a backing
-loop, if one is available here. Drop **royalty-free, commercially-licensed** MP3
-loops in this folder:
+The music engines can layer the vocal over a **royalty-free** backing loop, if one
+is present here. Drop **commercially-licensed** loops in this folder:
 
-- `default.mp3` — used when no genre-specific beat is found.
-- `<genre>.mp3` — e.g. `pop.mp3`, `hip-hop.mp3`, `lo-fi.mp3` (genre is lowercased and
-  non-alphanumeric characters become `-`).
+- `default.wav` — used when no genre-specific loop is found.
+- `<genre>.wav` — e.g. `pop.wav`, `hip-hop.wav`, `lo-fi.wav` (genre is lowercased
+  and non-alphanumeric characters become `-`).
 
-If no beat is present, the TTS path returns spoken lyrics with no backing track.
+Format by engine:
+- **`gemini-song`** (default) mixes loops in **pure JS**, so use **WAV** (16-bit).
+- **`google-tts-beat`** mixes via ffmpeg, so it uses **MP3** (`<genre>.mp3`).
+
+`gemini-song` already synthesizes chords/bass/drums on its own, so loops are purely
+optional extra flavor. If none are present, you still get the synth backing.
 
 ⚠️ Only add audio you have the rights to use. Keep a record of each file's license.

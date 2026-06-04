@@ -53,7 +53,7 @@ export const env = {
     return Array.from(new Set(out));
   },
   geminiApiKey: () => env.geminiKeys()[0],
-  musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "gemini-tts",
+  musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "gemini-song",
   storageBucket: () => getStorageBucket(),
   maxRewrites: () => intEnv("PIPELINE_MAX_REWRITES", 1),
   quotaSongsPerDay: () => intEnv("QUOTA_SONGS_PER_DAY", 20),

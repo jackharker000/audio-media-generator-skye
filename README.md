@@ -15,13 +15,13 @@ repeating chorus.
 | Lyrics + all reasoning | **Google Gemini** (`@google/genai`, 2.5 Flash / Flash-Lite) |
 | Database | **Cloud Firestore** (Firebase) |
 | File + audio storage | **Firestore** by default (no bucket needed); optional Cloud Storage |
-| The "music" | **Gemini TTS** (same free key, **no Cloud billing**) |
+| The "music" | **Gemini vocal + pure-JS synth backing** (chords/bass/drums), no billing |
 | Sign-in | **Google OAuth** (Auth.js) |
 | Hosting | **Vercel** |
 
 > ⚠️ **Spoken, not sung.** Google's free tier can't truly *sing* (Lyria with
 > vocals is paid). So MnemoSong has Gemini write the lyrics and **Gemini TTS
-> speak/rap them** with a musical delivery — on the same free AI Studio key, with
+> sing them over a pure-JS synth backing (chords, bass, drums) — on the same free AI Studio key, with
 > **no Google Cloud billing**. Free and maximally intelligible — great for memorization.
 
 ## How it works
@@ -31,7 +31,7 @@ A multi-stage agentic pipeline (all Gemini, all free):
 ```
 upload/paste ─► extract (local) ─► knowledge map (map/reduce)
    ─► song plan ─► lyric draft ─► critique ↔ rewrite loop
-   ─► INDEPENDENT FACT-CHECK GATE ─► style ─► Google TTS (+beat) ─► finalize
+   ─► INDEPENDENT FACT-CHECK GATE ─► style/arrange ─► vocal + synth music ─► finalize
 ```
 
 Every lyric line is bound to a source fact; the critique stage checks each line

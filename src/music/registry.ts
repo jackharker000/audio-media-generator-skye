@@ -1,15 +1,18 @@
 import { env } from "@/lib/env";
 import type { MusicProvider } from "./types";
+import { geminiSong } from "./providers/geminiSong";
 import { geminiTts } from "./providers/geminiTts";
 import { googleTtsBeat } from "./providers/googleTtsBeat";
 
 /**
- * Music engines, both Google and free:
- *   - "gemini-tts"      (default): uses the AI Studio GEMINI_API_KEY — no billing.
- *   - "google-tts-beat": Google Cloud Text-to-Speech (needs a billing-enabled
- *                        project) over an optional beat.
+ * Music engines (all Google, all free):
+ *   - "gemini-song" (default): Gemini TTS vocal + pure-JS synth backing
+ *     (chords/bass/drums from a Gemini-designed arrangement) + optional loops.
+ *   - "gemini-tts": voice only (no backing music).
+ *   - "google-tts-beat": Cloud TTS over an ffmpeg-mixed beat (needs Cloud billing).
  */
 const PROVIDERS: Record<string, MusicProvider> = {
+  [geminiSong.id]: geminiSong,
   [geminiTts.id]: geminiTts,
   [googleTtsBeat.id]: googleTtsBeat,
 };
@@ -24,8 +27,8 @@ export function listProviders(): MusicProvider[] {
   return Object.values(PROVIDERS);
 }
 
-/** Resolve the provider: explicit request → configured default → Gemini TTS. */
+/** Resolve the provider: explicit request → configured default → gemini-song. */
 export function resolveProvider(requested?: string): MusicProvider {
   if (requested && PROVIDERS[requested]) return PROVIDERS[requested];
-  return PROVIDERS[env.musicProvider()] ?? geminiTts;
+  return PROVIDERS[env.musicProvider()] ?? geminiSong;
 }

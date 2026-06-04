@@ -123,6 +123,29 @@ export const VoiceHintSchema = z.object({
 });
 export type VoiceHint = z.infer<typeof VoiceHintSchema>;
 
+// A simple, synthesizable musical arrangement (rendered by the pure-JS synth).
+export const ChordSchema = z.object({
+  root: z.string().describe('note letter, e.g. "C", "F#", "Bb"'),
+  quality: z.string().default("maj").describe("maj | min | maj7 | min7 | dom7 | dim | sus4 | aug"),
+  beats: z.number().min(0.5).max(8).default(4),
+});
+export type Chord = z.infer<typeof ChordSchema>;
+
+export const ArrangementSchema = z.object({
+  key: z.string().default("C major"),
+  tempoBpm: z.number().min(50).max(200).default(96),
+  chords: z.array(ChordSchema).min(1).max(24),
+  drums: z
+    .object({
+      kick: z.array(z.number()).default([0, 8]),
+      snare: z.array(z.number()).default([4, 12]),
+      hihat: z.array(z.number()).default([0, 2, 4, 6, 8, 10, 12, 14]),
+    })
+    .default({}),
+  feel: z.string().optional(),
+});
+export type Arrangement = z.infer<typeof ArrangementSchema>;
+
 export const MusicRequestSchema = z.object({
   lyrics: z.string(),
   styleTags: z.string().describe("comma-separated genre/style/instrument/vocal tags"),
@@ -131,6 +154,7 @@ export const MusicRequestSchema = z.object({
   genre: z.string().optional(),
   seed: z.number().int().optional(),
   steps: z.number().int().optional(),
+  arrangement: ArrangementSchema.optional(),
 });
 export type MusicRequest = z.infer<typeof MusicRequestSchema>;
 
