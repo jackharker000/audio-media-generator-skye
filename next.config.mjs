@@ -26,6 +26,30 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/api/jobs/[id]/stream": ["./node_modules/ffmpeg-static/ffmpeg"],
   },
+  // Baseline security headers applied to every route. We intentionally avoid a
+  // strict Content-Security-Policy here: Next.js / Vercel rely on inline
+  // bootstrap scripts and a strict CSP would break hydration without a nonce
+  // pipeline. The headers below are safe defaults that don't affect rendering.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
