@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
-import { currentUserId } from "@/auth/auth";
+import { currentUserId, isAdmin } from "@/auth/auth";
 
 export async function requireUser(): Promise<{ userId: string } | NextResponse> {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return { userId };
+}
+
+/** HTTP-boundary admin gate (defense in depth on top of service assertAdmin). */
+export async function requireAdmin(): Promise<NextResponse | null> {
+  if (!(await isAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  return null;
 }
 
 export function ok(data: unknown, init?: ResponseInit) {

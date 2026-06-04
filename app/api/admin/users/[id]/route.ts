@@ -1,9 +1,11 @@
-import { ok, guard } from "@/server/http";
+import { ok, guard, requireAdmin } from "@/server/http";
 import { deleteUserContent, setUserFlags } from "@/server/admin";
 
 export const runtime = "nodejs";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const forbidden = await requireAdmin();
+  if (forbidden) return forbidden;
   const { id } = await ctx.params;
   return guard(async () => {
     const body = (await req.json().catch(() => ({}))) as {
@@ -19,6 +21,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const forbidden = await requireAdmin();
+  if (forbidden) return forbidden;
   const { id } = await ctx.params;
   return guard(async () => {
     await deleteUserContent(id);

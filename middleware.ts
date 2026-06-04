@@ -38,7 +38,9 @@ export function middleware(req: NextRequest) {
     pruneRateLimitStore(store, WINDOW_MS);
   }
 
-  const ip = clientIpFromHeaders(req.headers);
+  // Prefer the platform-trusted client IP (Vercel sets x-real-ip); fall back to
+  // the XFF parser. Avoids the spoofable left-most X-Forwarded-For token.
+  const ip = req.headers.get("x-real-ip")?.trim() || clientIpFromHeaders(req.headers);
   const result = checkRateLimit(store, ip, { limit: LIMIT, windowMs: WINDOW_MS });
 
   if (!result.allowed) {

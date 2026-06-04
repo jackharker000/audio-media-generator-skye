@@ -57,30 +57,24 @@ function otherId(f: DbFriendship, userId: string): string {
 
 // ---- Requests -------------------------------------------------------------
 
-export async function sendRequest(fromId: string, toEmail: string): Promise<DbFriendship> {
+export async function sendRequest(fromId: string, toEmail: string): Promise<{ created: boolean }> {
   const found = await findUserByEmail(toEmail);
-  if (!found) throw new Error("No user with that email.");
-  if (found.id === fromId) throw new Error("You can't add yourself.");
-
-  // Reject if a pending/accepted friendship already exists in either direction.
+  if (found && found.id === fromId) throw new Error("You can't add yourself.");
+  // Do not reveal whether the email maps to an account, or the relationship
+  // state — return neutrally to prevent account enumeration.
+  if (!found) return { created: false };
   const existing = await friendshipsInvolving(fromId);
-  const dup = existing.find((f) => otherId(f, fromId) === found.id);
-  if (dup) {
-    throw new Error(
-      dup.status === "accepted" ? "You're already friends." : "A request is already pending.",
-    );
-  }
+  if (existing.some((f) => otherId(f, fromId) === found.id)) return { created: false };
 
   const now = Date.now();
-  const doc = {
+  await col(COLLECTIONS.friendships).add({
     requesterId: fromId,
     addresseeId: found.id,
     status: "pending" as const,
     createdAt: now,
     updatedAt: now,
-  };
-  const ref = await col(COLLECTIONS.friendships).add(doc);
-  return { id: ref.id, ...doc };
+  });
+  return { created: true };
 }
 
 export async function respondRequest(
@@ -189,7 +183,8 @@ export async function friendsFeed(userId: string): Promise<FeedItem[]> {
 
 export async function canViewSong(viewerId: string | null, song: DbSong): Promise<boolean> {
   if (viewerId && song.userId === viewerId) return true;
-  if (song.visibility === "public") return true;
+  // Treat both the visibility field and the legacy isPublic flag as "public".
+  if (song.visibility === "public" || song.isPublic) return true;
   if (song.visibility === "friends") {
     return viewerId ? areFriends(viewerId, song.userId) : false;
   }

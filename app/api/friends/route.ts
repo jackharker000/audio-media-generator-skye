@@ -21,7 +21,8 @@ export async function POST(req: Request) {
   const email = typeof body.email === "string" ? body.email : "";
   if (!email.trim()) return fail("Email is required.");
   return guard(async () => {
-    const friendship = await sendRequest(u.userId, email);
-    return ok({ ok: true, friendship });
+    await sendRequest(u.userId, email);
+    // Neutral response (don't reveal whether the account exists).
+    return ok({ ok: true, message: "If that account exists, a friend request was sent." });
   });
 }

@@ -97,10 +97,9 @@ export async function setUserFlags(userId: string, flags: UserFlags): Promise<vo
   const update: Record<string, unknown> = {};
   if (flags.disabled !== undefined) update.disabled = !!flags.disabled;
   if (flags.quotaOverride !== undefined) {
+    const n = Number(flags.quotaOverride);
     update.quotaOverride =
-      flags.quotaOverride === null || Number.isNaN(flags.quotaOverride)
-        ? null
-        : Number(flags.quotaOverride);
+      flags.quotaOverride === null || !Number.isFinite(n) ? null : Math.max(0, Math.floor(n));
   }
   if (Object.keys(update).length === 0) return;
   await col("users").doc(userId).update(update);

@@ -21,12 +21,21 @@ export function storageBackend(): StorageBackend {
   return "local";
 }
 
-/** GCS issues its own signed URLs; the other backends are served via /api/blob. */
+/** GCS issues signed URLs; other backends are streamed (auth-checked) by the audio routes. */
 export function usingCloud(): boolean {
   return storageBackend() === "gcs";
 }
 
 const LOCAL_DIR = path.join(process.cwd(), ".data", "blob");
+
+/** Resolve a key under LOCAL_DIR, rejecting path traversal (defense in depth). */
+function localPath(key: string): string {
+  const p = path.resolve(LOCAL_DIR, key);
+  if (p !== LOCAL_DIR && !p.startsWith(LOCAL_DIR + path.sep)) {
+    throw new Error("Invalid storage key");
+  }
+  return p;
+}
 
 async function bucket() {
   const { getBucket } = await import("@/lib/firebase");
@@ -52,7 +61,7 @@ export async function putObject(
     await putBlob(key, toBuffer(body), contentType);
     return;
   }
-  const file = path.join(LOCAL_DIR, key);
+  const file = localPath(key);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, toBuffer(body));
   if (contentType) await fs.writeFile(`${file}.meta`, contentType, "utf8").catch(() => {});
@@ -66,14 +75,14 @@ export async function getObjectBuffer(key: string): Promise<Buffer> {
     return buf;
   }
   if (backend === "firestore") return getBlob(key);
-  return fs.readFile(path.join(LOCAL_DIR, key));
+  return fs.readFile(localPath(key));
 }
 
 export async function getContentType(key: string): Promise<string | undefined> {
   const backend = storageBackend();
   if (backend === "gcs") return undefined;
   if (backend === "firestore") return getBlobContentType(key);
-  return fs.readFile(`${path.join(LOCAL_DIR, key)}.meta`, "utf8").catch(() => undefined);
+  return fs.readFile(`${localPath(key)}.meta`, "utf8").catch(() => undefined);
 }
 
 export async function objectExists(key: string): Promise<boolean> {
@@ -85,7 +94,7 @@ export async function objectExists(key: string): Promise<boolean> {
       return exists;
     }
     if (backend === "firestore") return blobExists(key);
-    await fs.access(path.join(LOCAL_DIR, key));
+    await fs.access(localPath(key));
     return true;
   } catch {
     return false;
@@ -106,8 +115,9 @@ export async function getReadUrl(
     });
     return url;
   }
-  // Firestore / local: served (auth-checked) through our own routes.
-  return `/api/blob/${key.split("/").map(encodeURIComponent).join("/")}`;
+  // Non-GCS backends have no public object URL — the audio routes stream the
+  // bytes directly after an auth/visibility check. Callers must not expose keys.
+  throw new Error("Direct object URLs are only available on the GCS storage backend");
 }
 
 /** Best-effort delete of an object across whichever backend is active. */
@@ -123,8 +133,8 @@ export async function deleteObject(key: string): Promise<void> {
       await deleteBlob(key);
       return;
     }
-    await fs.unlink(path.join(LOCAL_DIR, key)).catch(() => {});
-    await fs.unlink(`${path.join(LOCAL_DIR, key)}.meta`).catch(() => {});
+    await fs.unlink(localPath(key)).catch(() => {});
+    await fs.unlink(`${localPath(key)}.meta`).catch(() => {});
   } catch {
     /* best effort */
   }
