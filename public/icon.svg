@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MnemoSong">
+  <rect width="512" height="512" rx="112" fill="#4f46e5"/>
+  <g fill="#ffffff">
+    <circle cx="184" cy="352" r="44"/>
+    <circle cx="360" cy="320" r="44"/>
+    <rect x="216" y="150" width="24" height="206"/>
+    <rect x="392" y="118" width="24" height="206"/>
+    <path d="M216 150 L416 118 V162 L216 194 Z"/>
+  </g>
+</svg>
