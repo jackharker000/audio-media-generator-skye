@@ -101,3 +101,33 @@ export async function currentUserId(): Promise<string | null> {
     return null;
   }
 }
+
+export interface SessionUser {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+}
+
+/** Returns the signed-in user (id + email/name), or null. */
+export async function currentUser(): Promise<SessionUser | null> {
+  try {
+    const session = await auth();
+    const u = session?.user as SessionUser | undefined;
+    return u?.id ? { id: u.id, email: u.email, name: u.name } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Admins are configured via the ADMIN_EMAILS env var (comma-separated). */
+export function adminEmails(): string[] {
+  return (optionalEnv("ADMIN_EMAILS") ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export async function isAdmin(): Promise<boolean> {
+  const u = await currentUser();
+  return !!(u?.email && adminEmails().includes(u.email.toLowerCase()));
+}

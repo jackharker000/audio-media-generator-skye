@@ -16,6 +16,7 @@ export const COLLECTIONS = {
   shares: "shares",
   usage: "usageCounters",
   blobs: "blobs",
+  friendships: "friendships",
 } as const;
 
 export * from "./types";

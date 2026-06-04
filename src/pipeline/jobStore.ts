@@ -155,6 +155,7 @@ export async function createSongAndFinish(args: {
     rootSongId,
     version,
     isPublic: false,
+    visibility: "private",
     createdAt: now,
     updatedAt: now,
   });

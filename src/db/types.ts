@@ -83,9 +83,33 @@ export interface DbSong {
   rootSongId?: string | null;
   version: number;
   isPublic: boolean;
+  visibility?: SongVisibility | null;
   quiz?: QuizQuestion[] | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/** Who can see a song: just the owner, the owner's accepted friends, or anyone. */
+export type SongVisibility = "private" | "friends" | "public";
+
+export interface DbFriendship {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: "pending" | "accepted";
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Auth.js-managed user doc (collection "users"), with fields we read. */
+export interface DbUser {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  image?: string | null;
+  disabled?: boolean | null;
+  quotaOverride?: number | null;
+  createdAt?: number | null;
 }
 
 export interface DbShare {
