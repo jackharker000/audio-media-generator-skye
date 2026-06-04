@@ -20,13 +20,18 @@ if (!process.env.AUTH_URL && process.env.NODE_ENV === "production") {
   process.env.AUTH_URL = DEFAULT_SITE_URL;
 }
 
-async function ensureDemoUser(): Promise<string> {
-  const id = "dev-user";
-  await getDb()
-    .collection("users")
-    .doc(id)
-    .set({ name: "Dev User", email: "dev@mnemosong.local", emailVerified: null }, { merge: true });
-  return id;
+/** Find an existing user by email or create one — gives each email its own account. */
+async function findOrCreateUser(email: string, name?: string): Promise<string> {
+  const db = getDb();
+  const snap = await db.collection("users").where("email", "==", email).limit(1).get();
+  if (!snap.empty) return snap.docs[0].id;
+  const ref = await db.collection("users").add({
+    email,
+    name: name || email.split("@")[0],
+    emailVerified: null,
+    image: null,
+  });
+  return ref.id;
 }
 
 function buildConfig() {
@@ -43,12 +48,18 @@ function buildConfig() {
   if (devLogin && features.hasDb()) {
     providers.push(
       Credentials({
-        id: "dev",
-        name: "Dev login",
-        credentials: {},
-        authorize: async () => {
-          const id = await ensureDemoUser();
-          return { id, email: "dev@mnemosong.local", name: "Dev User" };
+        id: "credentials",
+        name: "Email",
+        credentials: {
+          email: { label: "Email", type: "email" },
+          name: { label: "Name", type: "text" },
+        },
+        authorize: async (creds) => {
+          const email = String(creds?.email ?? "").trim().toLowerCase();
+          if (!email || !email.includes("@")) return null;
+          const name = creds?.name ? String(creds.name) : undefined;
+          const id = await findOrCreateUser(email, name);
+          return { id, email, name: name ?? email };
         },
       }),
     );

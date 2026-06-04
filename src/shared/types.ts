@@ -59,7 +59,7 @@ export interface JobInputParams {
   parentSongId?: string;
 }
 
-import type { VoiceHint } from "@/agents/schemas";
+import type { LyricDraft, MusicRequest, SongMeta, SongPlan, VoiceHint } from "@/agents/schemas";
 
 export interface SongParams {
   genre?: string;
@@ -68,6 +68,15 @@ export interface SongParams {
   seed?: number;
   durationSec?: number;
   providerId?: string;
+}
+
+/** Stored per-job so a resumed pipeline skips already-completed expensive stages. */
+export interface PipelineCheckpoint {
+  plan?: SongPlan;
+  draft?: LyricDraft;
+  musicReq?: MusicRequest;
+  meta?: SongMeta;
+  audioKey?: string;
 }
 
 export interface NormalizedSource {

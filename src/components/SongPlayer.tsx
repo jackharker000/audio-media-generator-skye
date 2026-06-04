@@ -126,7 +126,7 @@ export function SongPlayer({ song, canEdit }: { song: SongView; canEdit: boolean
 
       {canEdit && (
         <div className="card">
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
             <h3 className="font-semibold">Remix</h3>
             <select className="input max-w-[10rem]" value={genre} onChange={(e) => setGenre(e.target.value)}>
               {GENRES.map((g) => (

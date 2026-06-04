@@ -30,6 +30,9 @@ export default async function NotebookPage({ params }: { params: Promise<{ id: s
       <NotebookClient
         projectId={id}
         defaultFocus={detail.project.focusPromptDefault ?? undefined}
+        activeJobId={
+          detail.jobs.find((j) => j.status === "queued" || j.status === "running")?.id ?? null
+        }
         initialSources={detail.sources.map((s) => ({
           id: s.id,
           filename: s.filename,

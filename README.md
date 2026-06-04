@@ -130,8 +130,15 @@ src/components/          # React UI (client components)
 
 ## Notes & limits
 
-- **Gemini free tier** ≈ 25 songs/day per key (Flash's 250 req/day is the binding
-  limit). Push bulk work to Flash-Lite or enable cheap paid billing for more.
+- **Gemini free tier** is limited and **shared across all users** (one server key).
+  The pipeline runs on `flash-lite` (higher free quota) and makes few calls, and it
+  **rotates across multiple keys** if you set `GEMINI_API_KEYS=key1,key2,...` (keys
+  from different Google projects each have their own quota). For real volume, enable
+  paid billing on the Gemini API.
+- **Multi-user:** each Google account — or each email via the lightweight email
+  login (`DEV_LOGIN=1`) — gets its own notebooks and library.
+- **Resuming:** generation runs while the page is open; progress is checkpointed to
+  Firestore, so reopening an in-progress notebook resumes it where it left off.
 - **Optional beats**: drop royalty-free loops in `public/beats/<genre>.mp3` (and a
   `default.mp3`) to give the TTS engine a backing track. Keep them license-clear.
 

@@ -2,6 +2,7 @@ import type { Fact, LyricLine } from "@/agents/schemas";
 import type {
   JobInputParams,
   JobStatus,
+  PipelineCheckpoint,
   SongParams,
   StageName,
   StageStates,
@@ -59,6 +60,7 @@ export interface DbGenerationJob {
   musicProviderId?: string | null;
   songId?: string | null;
   error?: string | null;
+  checkpoint?: PipelineCheckpoint | null;
   createdAt: number;
   updatedAt: number;
 }

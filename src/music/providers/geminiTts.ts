@@ -77,29 +77,34 @@ const candidateModels = (): string[] =>
   ].filter(Boolean) as string[];
 
 async function synthesize(req: MusicRequest): Promise<Buffer> {
-  const ai = new GoogleGenAI({ apiKey: env.geminiApiKey()! });
+  const keys = env.geminiKeys();
+  if (keys.length === 0) throw new Error("No Gemini key configured for TTS");
   const prompt = buildPrompt(req);
   const voiceName = pickVoice(req);
   let lastErr: unknown;
 
-  for (const model of candidateModels()) {
-    try {
-      const res = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          responseModalities: ["AUDIO"],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
-        } as any,
-      });
-      const parts = (res.candidates?.[0]?.content?.parts ?? []) as any[];
-      const audio = parts.find((p) => p?.inlineData?.data);
-      const b64: string | undefined = audio?.inlineData?.data;
-      const mime: string = audio?.inlineData?.mimeType ?? "audio/L16;rate=24000";
-      if (!b64) throw new Error("no audio in response");
-      return pcmToWav(Buffer.from(b64, "base64"), sampleRateFromMime(mime));
-    } catch (e) {
-      lastErr = e;
+  // Rotate across keys (each project has its own quota) and tolerate model drift.
+  for (const key of keys) {
+    const ai = new GoogleGenAI({ apiKey: key });
+    for (const model of candidateModels()) {
+      try {
+        const res = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+          } as any,
+        });
+        const parts = (res.candidates?.[0]?.content?.parts ?? []) as any[];
+        const audio = parts.find((p) => p?.inlineData?.data);
+        const b64: string | undefined = audio?.inlineData?.data;
+        const mime: string = audio?.inlineData?.mimeType ?? "audio/L16;rate=24000";
+        if (!b64) throw new Error("no audio in response");
+        return pcmToWav(Buffer.from(b64, "base64"), sampleRateFromMime(mime));
+      } catch (e) {
+        lastErr = e;
+      }
     }
   }
   throw new Error("Gemini TTS failed: " + String((lastErr as Error)?.message ?? lastErr));

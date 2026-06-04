@@ -5,6 +5,7 @@ import type {
   KnowledgeMap,
   LyricDraft,
   MusicRequest,
+  PipelineCheckpoint,
   SongMeta,
   SongPlan,
   StageName,
@@ -55,6 +56,13 @@ export async function setStage(
 
 export async function setKnowledgeMapId(jobId: string, kmId: string): Promise<void> {
   await jobs().doc(jobId).update({ knowledgeMapId: kmId, updatedAt: Date.now() });
+}
+
+export async function saveCheckpoint(
+  jobId: string,
+  checkpoint: PipelineCheckpoint,
+): Promise<void> {
+  await jobs().doc(jobId).update({ checkpoint, updatedAt: Date.now() });
 }
 
 export async function saveSourceText(

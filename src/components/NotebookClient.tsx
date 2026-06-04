@@ -24,11 +24,13 @@ export function NotebookClient({
   initialSources,
   songs,
   defaultFocus,
+  activeJobId,
 }: {
   projectId: string;
   initialSources: SourceView[];
   songs: SongRef[];
   defaultFocus?: string;
+  activeJobId?: string | null;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -36,7 +38,8 @@ export function NotebookClient({
   const [paste, setPaste] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
+  // Reconnect to an in-progress job (e.g. after closing & reopening the page).
+  const [jobId, setJobId] = useState<string | null>(activeJobId ?? null);
 
   // Generation options
   const [focus, setFocus] = useState(defaultFocus ?? "");

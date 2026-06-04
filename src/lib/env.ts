@@ -35,10 +35,17 @@ export const env = {
     optionalEnv("APP_URL") ??
     optionalEnv("NEXT_PUBLIC_APP_URL") ??
     (process.env.NODE_ENV === "production" ? DEFAULT_SITE_URL : "http://localhost:3000"),
-  geminiApiKey: () => optionalEnv("GEMINI_API_KEY"),
+  /** All configured Gemini keys (GEMINI_API_KEYS csv + GEMINI_API_KEY), deduped. */
+  geminiKeys: (): string[] => {
+    const list = (optionalEnv("GEMINI_API_KEYS") ?? "").split(",");
+    const single = optionalEnv("GEMINI_API_KEY");
+    if (single) list.push(single);
+    return Array.from(new Set(list.map((k) => k.trim()).filter(Boolean)));
+  },
+  geminiApiKey: () => env.geminiKeys()[0],
   musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "gemini-tts",
   storageBucket: () => getStorageBucket(),
-  maxRewrites: () => intEnv("PIPELINE_MAX_REWRITES", 2),
+  maxRewrites: () => intEnv("PIPELINE_MAX_REWRITES", 1),
   quotaSongsPerDay: () => intEnv("QUOTA_SONGS_PER_DAY", 20),
 };
 
@@ -47,7 +54,7 @@ export const features = {
   /** Firestore (our database) — needs a Google service account. */
   hasDb: () => !!getServiceAccount(),
   hasFirebase: () => !!getServiceAccount(),
-  hasGemini: () => !!optionalEnv("GEMINI_API_KEY"),
+  hasGemini: () => env.geminiKeys().length > 0,
   /** Google Cloud Text-to-Speech (the music engine) uses the same SA. */
   hasTts: () => !!getServiceAccount(),
   /** Cloud Storage needs the SA and a bucket name. */

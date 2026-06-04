@@ -29,6 +29,15 @@ export async function buildKnowledgeMap(
 
   let facts: Fact[] = perChunk.flatMap((x) => x.facts);
 
+  // Single small source: rank/cap in JS and skip the extra reduce LLM call.
+  if (chunks.length === 1 && facts.length <= 40) {
+    const ranked = [...facts]
+      .sort((a, b) => b.importance - a.importance)
+      .slice(0, 24)
+      .map((f, i) => ({ ...f, factId: f.factId || `f${i + 1}` }));
+    return { facts: ranked, themes: [], focusApplied: focus };
+  }
+
   // Hierarchical reduce so the final prompt stays small for very long docs.
   if (facts.length > 80) {
     const batches: Fact[][] = [];

@@ -1,30 +1,57 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { env } from "@/lib/env";
+import { env, optionalEnv } from "@/lib/env";
 import { sleep } from "@/lib/utils";
 
 /**
- * Thin Gemini wrapper used by every text stage. Free-tier friendly:
- *  - model tiering ("flash" for reasoning, "flash-lite" for bulk),
- *  - JSON output validated against a Zod schema (version-agnostic: we parse the
- *    returned text rather than relying on a specific responseSchema dialect),
- *  - retry with backoff on 429 / 5xx and one self-correcting retry on a schema
- *    validation failure.
+ * Gemini wrapper used by every text stage. Free-tier friendly:
+ *  - **Key rotation**: set GEMINI_API_KEYS=key1,key2,... (from different Google
+ *    projects, each with its own free quota). Calls round-robin across keys and
+ *    fail over instantly when one is rate-limited.
+ *  - Defaults to Flash-Lite (higher free quota); override with GEMINI_MODEL* env.
+ *  - JSON validated against a Zod schema, with one self-correcting retry.
  */
 
 export type GeminiModel = "flash" | "flash-lite";
 
+const DEFAULT_MODEL = optionalEnv("GEMINI_MODEL") ?? "gemini-2.5-flash-lite";
 const MODEL_IDS: Record<GeminiModel, string> = {
-  flash: "gemini-2.5-flash",
-  "flash-lite": "gemini-2.5-flash-lite",
+  // Both default to Flash-Lite. Set GEMINI_MODEL_FLASH=gemini-2.5-flash to use
+  // Flash for the reasoning stages (needs more quota / billing).
+  flash: optionalEnv("GEMINI_MODEL_FLASH") ?? DEFAULT_MODEL,
+  "flash-lite": optionalEnv("GEMINI_MODEL_FLASH_LITE") ?? DEFAULT_MODEL,
 };
 
-let _ai: GoogleGenAI | null = null;
-function ai(): GoogleGenAI {
-  const apiKey = env.geminiApiKey();
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not set — the text pipeline can't run.");
-  _ai ??= new GoogleGenAI({ apiKey });
-  return _ai;
+// ---- key rotation ---------------------------------------------------------
+
+const clients = new Map<string, GoogleGenAI>();
+const cooldownUntil = new Map<string, number>(); // key -> epoch ms usable again
+let rrCursor = 0;
+
+function clientFor(key: string): GoogleGenAI {
+  let c = clients.get(key);
+  if (!c) {
+    c = new GoogleGenAI({ apiKey: key });
+    clients.set(key, c);
+  }
+  return c;
+}
+
+/** Next key not currently cooling down (round-robin), or null if all cooling. */
+function pickKey(keys: string[]): string | null {
+  const now = Date.now();
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[(rrCursor + i) % keys.length];
+    if ((cooldownUntil.get(k) ?? 0) <= now) {
+      rrCursor = (rrCursor + i + 1) % keys.length;
+      return k;
+    }
+  }
+  return null;
+}
+
+function soonestAvailable(keys: string[]): number {
+  return Math.min(...keys.map((k) => cooldownUntil.get(k) ?? 0));
 }
 
 function isRetryable(err: unknown): boolean {
@@ -32,12 +59,19 @@ function isRetryable(err: unknown): boolean {
   return (
     msg.includes("429") ||
     msg.includes("resource_exhausted") ||
+    msg.includes("quota") ||
     msg.includes("rate") ||
     msg.includes("503") ||
     msg.includes("500") ||
     msg.includes("unavailable") ||
     msg.includes("overloaded")
   );
+}
+
+function parseRetryDelaySec(err: unknown): number | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const m = /retryDelay"?\s*[:=]\s*"?(\d+(?:\.\d+)?)s/i.exec(msg);
+  return m ? Math.ceil(parseFloat(m[1])) : null;
 }
 
 type ContentPart = { text: string } | { inlineData: { mimeType: string; data: string } };
@@ -51,12 +85,23 @@ async function callModel(opts: {
   maxOutputTokens?: number;
   maxRetries?: number;
 }): Promise<string> {
-  const maxRetries = opts.maxRetries ?? 4;
+  const keys = env.geminiKeys();
+  if (keys.length === 0) throw new Error("No GEMINI_API_KEY / GEMINI_API_KEYS configured.");
+  const maxRetries = opts.maxRetries ?? Math.max(6, keys.length * 2);
   let attempt = 0;
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    let key = pickKey(keys);
+    if (!key) {
+      // All keys cooling down — wait until the soonest is free (capped).
+      const waitMs = Math.min(Math.max(soonestAvailable(keys) - Date.now(), 800), 60_000);
+      await sleep(waitMs + Math.random() * 300);
+      key = pickKey(keys) ?? keys[0];
+    }
+
     try {
-      const response = await ai().models.generateContent({
+      const response = await clientFor(key).models.generateContent({
         model: MODEL_IDS[opts.model],
         contents: [{ role: "user", parts: opts.parts as any }],
         config: {
@@ -71,9 +116,11 @@ async function callModel(opts: {
       return text;
     } catch (err) {
       attempt++;
-      if (attempt > maxRetries || !isRetryable(err)) throw err;
-      const backoff = Math.min(2000 * 2 ** (attempt - 1), 30_000);
-      await sleep(backoff + Math.random() * 500);
+      if (!isRetryable(err)) throw err;
+      // Put this key on cooldown for the suggested delay, then try another key.
+      const delaySec = parseRetryDelaySec(err) ?? Math.min(2 ** attempt, 30);
+      cooldownUntil.set(key, Date.now() + delaySec * 1000);
+      if (attempt > maxRetries) throw err;
     }
   }
 }
@@ -132,7 +179,6 @@ export async function generateJson<T>(opts: {
   try {
     return tryParse(raw);
   } catch (firstErr) {
-    // One self-correcting retry: show the model its mistake.
     const fix = await callModel({
       model,
       system: opts.system,

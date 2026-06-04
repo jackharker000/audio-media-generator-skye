@@ -1,6 +1,7 @@
 import { COLLECTIONS, getDb } from "@/db";
 import { env } from "@/lib/env";
 import * as store from "./jobStore";
+import { friendlyError } from "./errors";
 import { extractSources } from "./stages/extract";
 import { buildKnowledgeMap } from "./stages/knowledgeMap";
 import {
@@ -12,9 +13,9 @@ import {
 } from "./stages/songwriting";
 import { refineAndVerify, type StageRunner } from "./refine";
 import { resolveProvider } from "@/music/registry";
-import { fetchExternalToBlob } from "@/storage";
+import { fetchExternalToBlob, objectExists } from "@/storage";
 import type { LyricDraft } from "@/agents/schemas";
-import type { StageName } from "@/shared/types";
+import type { PipelineCheckpoint, StageName } from "@/shared/types";
 
 const nowIso = () => new Date().toISOString();
 
@@ -35,21 +36,27 @@ async function runStage<T>(jobId: string, stage: StageName, fn: () => Promise<T>
 }
 
 /**
- * Executes the full generation pipeline in-process. Music is synchronous
- * (Google TTS), so there is nothing to wait on — no external orchestrator
- * needed. Stage status is persisted so the SSE stream can report progress.
+ * Executes the full generation pipeline in-process (Google TTS is synchronous,
+ * so there's nothing to wait on). Each expensive stage is checkpointed to
+ * Firestore, so a re-driven job resumes where it left off instead of restarting
+ * and re-spending quota.
  */
 export async function runPipeline(jobId: string): Promise<void> {
   try {
     const bundle = await store.loadJobBundle(jobId);
     const input = bundle.job.inputParams;
+    const cp: PipelineCheckpoint = { ...(bundle.job.checkpoint ?? {}) };
     const provider = resolveProvider(input.provider);
+    const saveCp = async (patch: Partial<PipelineCheckpoint>) => {
+      Object.assign(cp, patch);
+      await store.saveCheckpoint(jobId, cp);
+    };
 
-    // 2. extract (local-first)
+    // 2. extract (local, cheap — always run)
     const extracted = await runStage(jobId, "extract", () => extractSources(bundle.sources));
 
-    // 3. knowledge map (reuse when regenerating)
-    let knowledgeMapId = input.reuseKnowledgeMapId;
+    // 3. knowledge map (reuse if the job already has one)
+    let knowledgeMapId = bundle.job.knowledgeMapId ?? input.reuseKnowledgeMapId ?? undefined;
     const km = knowledgeMapId
       ? await store.getKnowledgeMapById(knowledgeMapId)
       : await runStage(jobId, "knowledge_map", () =>
@@ -61,31 +68,55 @@ export async function runPipeline(jobId: string): Promise<void> {
     }
 
     // 4. plan
-    const plan = await runStage(jobId, "song_plan", () => buildSongPlan(km, input));
+    let plan = cp.plan;
+    if (!plan) {
+      plan = await runStage(jobId, "song_plan", () => buildSongPlan(km, input));
+      await saveCp({ plan });
+    }
 
-    // 5. lyric draft (or user-edited lyrics)
-    let draft: LyricDraft = input.lyricsOverride
-      ? draftFromText(input.lyricsOverride)
-      : await runStage(jobId, "lyric_draft", () => draftLyrics(plan, km));
-
-    // 6-8. critique → rewrite loop + independent fact-check gate
-    const runner: StageRunner = { run: (_id, stage, fn) => runStage(jobId, stage, fn) };
-    draft = await refineAndVerify(runner, { draft, km, plan, input, maxRewrites: env.maxRewrites() });
+    // 5-8. draft + critique/rewrite loop + fact-check gate (the expensive block)
+    let draft: LyricDraft | undefined = cp.draft;
+    if (!draft) {
+      const base = input.lyricsOverride
+        ? draftFromText(input.lyricsOverride)
+        : await runStage(jobId, "lyric_draft", () => draftLyrics(plan!, km));
+      const runner: StageRunner = { run: (_id, stage, fn) => runStage(jobId, stage, fn) };
+      draft = await refineAndVerify(runner, {
+        draft: base,
+        km,
+        plan,
+        input,
+        maxRewrites: env.maxRewrites(),
+      });
+      await saveCp({ draft });
+    }
 
     // 9. style params
-    const musicReq = await runStage(jobId, "style_params", () => buildMusicRequest(plan, draft, input));
+    let musicReq = cp.musicReq;
+    if (!musicReq) {
+      musicReq = await runStage(jobId, "style_params", () => buildMusicRequest(plan!, draft!, input));
+      await saveCp({ musicReq });
+    }
 
-    // 10. music (synchronous Google TTS)
-    const music = await runStage(jobId, "music", () => {
-      if (!provider.render) throw new Error(`Provider ${provider.id} cannot render audio`);
-      return provider.render(musicReq, { jobId });
-    });
+    // 10. music — skip if audio was already rendered and is still present
+    let audioKey = cp.audioKey;
+    if (!audioKey || !(await objectExists(audioKey))) {
+      audioKey = await runStage(jobId, "music", async () => {
+        if (!provider.render) throw new Error(`Provider ${provider.id} cannot render audio`);
+        const music = await provider.render(musicReq!, { jobId });
+        const ext = (music.contentType ?? "").includes("wav") ? "wav" : "mp3";
+        const key = music.storageKey ?? `songs/${jobId}.${ext}`;
+        if (!music.storageKey && music.audioUrl) await fetchExternalToBlob(music.audioUrl, key);
+        return key;
+      });
+      await saveCp({ audioKey });
+    }
 
-    // 11. post-process: title + ensure audio is in our storage
-    const meta = await runStage(jobId, "post_process", () => makeTitle(plan, draft));
-    const audioKey = music.storageKey ?? `songs/${jobId}.mp3`;
-    if (!music.storageKey && music.audioUrl) {
-      await fetchExternalToBlob(music.audioUrl, audioKey);
+    // 11. post-process: title
+    let meta = cp.meta;
+    if (!meta) {
+      meta = await runStage(jobId, "post_process", () => makeTitle(plan!, draft!));
+      await saveCp({ meta });
     }
 
     // 12. finalize
@@ -103,7 +134,7 @@ export async function runPipeline(jobId: string): Promise<void> {
       }),
     );
   } catch (e) {
-    await store.markFailed(jobId, (e as Error)?.message ?? String(e));
+    await store.markFailed(jobId, friendlyError(e));
   }
 }
 
@@ -113,16 +144,14 @@ const STALE_MS = 180_000; // re-drive a "running" job if untouched this long
 const inFlight = new Set<string>();
 
 /**
- * Idempotently start a job's pipeline. Driven by the SSE stream endpoint, which
- * keeps the serverless function alive while the pipeline runs. A Firestore
+ * Idempotently start (or resume) a job's pipeline. Driven by the SSE stream
+ * endpoint, which keeps the serverless function alive while it runs. A Firestore
  * transaction (plus an in-memory guard) ensures only one runner executes.
  */
 export async function startIfNeeded(jobId: string): Promise<"started" | "running" | "done" | "missing"> {
   if (inFlight.has(jobId)) return "running";
 
   const ref = getDb().collection(COLLECTIONS.jobs).doc(jobId);
-  // Holder object so the value set inside the async transaction is observed
-  // afterwards (TS control-flow can't narrow a plain `let` mutated in a closure).
   const state: { d: "start" | "skip" | "done" | "missing" } = { d: "skip" };
 
   await getDb().runTransaction(async (t) => {
@@ -142,7 +171,7 @@ export async function startIfNeeded(jobId: string): Promise<"started" | "running
       state.d = "start";
     } else if (j.status === "running" && now - (j.updatedAt ?? 0) > STALE_MS) {
       t.update(ref, { updatedAt: now });
-      state.d = "start"; // previous runner appears to have died
+      state.d = "start"; // previous runner appears to have died — resume it
     }
   });
 
