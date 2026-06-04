@@ -39,6 +39,26 @@ export default function Home() {
         ))}
       </section>
 
+      <section className="mx-auto max-w-4xl">
+        <h2 className="mb-4 text-center text-xl font-semibold">More than a song</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[
+            { e: "🎤", t: "Karaoke lyrics", d: "Follow along with synced, highlighting lyrics as it plays." },
+            { e: "🧠", t: "Quiz yourself", d: "Auto-generated multiple-choice questions test what you've learned." },
+            { e: "✅", t: "Fact-checked", d: "Every lyric is checked against your sources — no made-up facts." },
+            { e: "👥", t: "Share with friends", d: "Send songs to friends, or keep them private. Your call." },
+          ].map((f) => (
+            <div key={f.t} className="card flex gap-3">
+              <span className="text-2xl">{f.e}</span>
+              <div>
+                <h3 className="font-semibold">{f.t}</h3>
+                <p className="mt-0.5 text-sm text-slate-600">{f.d}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="card mx-auto max-w-3xl bg-brand-50">
         <h2 className="text-lg font-semibold">Why a song?</h2>
         <p className="mt-2 text-sm text-slate-700">

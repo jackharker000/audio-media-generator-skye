@@ -31,10 +31,15 @@ async function getUser(userId: string): Promise<DbUser | null> {
 }
 
 async function findUserByEmail(email: string): Promise<DbUser | null> {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized) return null;
-  const snap = await col("users").where("email", "==", normalized).limit(1).get();
-  return snap.empty ? null : withId<DbUser>(snap.docs[0]);
+  const trimmed = email.trim();
+  if (!trimmed) return null;
+  // Match case-insensitively: try the normalized form, then the exact input
+  // (OAuth-stored emails may not be lowercased).
+  for (const v of Array.from(new Set([trimmed.toLowerCase(), trimmed]))) {
+    const snap = await col("users").where("email", "==", v).limit(1).get();
+    if (!snap.empty) return withId<DbUser>(snap.docs[0]);
+  }
+  return null;
 }
 
 /** All friendship docs (any status) that involve this user. */

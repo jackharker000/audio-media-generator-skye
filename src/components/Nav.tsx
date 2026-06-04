@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { auth, isAdmin, signOut } from "@/auth/auth";
+import { listIncoming } from "@/server/friends";
 
 export async function Nav() {
   const session = await auth().catch(() => null);
   const user = session?.user;
   const admin = user ? await isAdmin().catch(() => false) : false;
+  const pendingRequests = user
+    ? await listIncoming((user as { id?: string }).id ?? "")
+        .then((l) => l.length)
+        .catch(() => 0)
+    : 0;
 
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -25,6 +31,11 @@ export async function Nav() {
           {user && (
             <Link href="/friends" className="text-slate-600 hover:text-slate-900">
               Friends
+              {pendingRequests > 0 && (
+                <span className="ml-1 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  {pendingRequests}
+                </span>
+              )}
             </Link>
           )}
           {admin && (
