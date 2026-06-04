@@ -56,10 +56,10 @@ export function getProjectId(): string | undefined {
 }
 
 export function getStorageBucket(): string | undefined {
-  const explicit = process.env.FIREBASE_STORAGE_BUCKET;
-  if (explicit) return explicit;
-  const pid = getProjectId();
-  return pid ? `${pid}.firebasestorage.app` : undefined;
+  // Only an EXPLICIT bucket enables Cloud Storage. We do NOT derive
+  // `<project>.firebasestorage.app`, otherwise the app would assume a bucket
+  // exists and the storage backend would never fall back to Firestore.
+  return process.env.FIREBASE_STORAGE_BUCKET || undefined;
 }
 
 /** Client options for @google-cloud libraries (Text-to-Speech) on any host. */
