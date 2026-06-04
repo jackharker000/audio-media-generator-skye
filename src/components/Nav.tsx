@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { auth, signOut } from "@/auth/auth";
+import { auth, isAdmin, signOut } from "@/auth/auth";
 
 export async function Nav() {
   const session = await auth().catch(() => null);
   const user = session?.user;
+  const admin = user ? await isAdmin().catch(() => false) : false;
 
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -21,6 +22,11 @@ export async function Nav() {
           <Link href="/library" className="text-slate-600 hover:text-slate-900">
             Library
           </Link>
+          {admin && (
+            <Link href="/admin" className="text-slate-600 hover:text-slate-900">
+              Admin
+            </Link>
+          )}
           {user ? (
             <form
               action={async () => {

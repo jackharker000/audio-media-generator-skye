@@ -11,6 +11,7 @@ import { env } from "@/lib/env";
 import { songsToday } from "@/pipeline/jobStore";
 import { slugify } from "@/lib/utils";
 import { generateQuiz } from "@/agents/quiz";
+import { getUserLimits } from "@/server/admin";
 import type { Fact, QuizQuestion } from "@/agents/schemas";
 import type { JobInputParams } from "@/shared/types";
 
@@ -130,8 +131,14 @@ export async function startGeneration(
 ): Promise<string> {
   await assertProjectOwner(userId, projectId);
 
-  if ((await songsToday(userId)) >= env.quotaSongsPerDay()) {
-    throw new Error(`Daily limit reached (${env.quotaSongsPerDay()} songs). Try again tomorrow.`);
+  // Per-user admin controls: disable account, or override the daily cap.
+  const limits = await getUserLimits(userId);
+  if (limits.disabled) {
+    throw new Error("Your account is disabled. Please contact an administrator.");
+  }
+  const dailyCap = limits.quotaOverride ?? env.quotaSongsPerDay();
+  if ((await songsToday(userId)) >= dailyCap) {
+    throw new Error(`Daily limit reached (${dailyCap} songs). Try again tomorrow.`);
   }
 
   const srcSnap = await col(COLLECTIONS.sources).where("projectId", "==", projectId).limit(1).get();
