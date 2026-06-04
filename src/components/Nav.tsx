@@ -22,6 +22,11 @@ export async function Nav() {
           <Link href="/library" className="text-slate-600 hover:text-slate-900">
             Library
           </Link>
+          {user && (
+            <Link href="/friends" className="text-slate-600 hover:text-slate-900">
+              Friends
+            </Link>
+          )}
           {admin && (
             <Link href="/admin" className="text-slate-600 hover:text-slate-900">
               Admin

@@ -36,6 +36,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
           lyrics: song.lyrics,
           genre: song.params.genre,
           isPublic: song.isPublic,
+          visibility: song.visibility,
           version: song.version,
           projectId: song.projectId,
         }}

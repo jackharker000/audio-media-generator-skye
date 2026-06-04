@@ -6,6 +6,8 @@ import { ProgressTracker } from "./ProgressTracker";
 import { KaraokeLyrics } from "./KaraokeLyrics";
 import { Quiz } from "./Quiz";
 import { Cover } from "./Cover";
+import { VisibilityControl } from "./VisibilityControl";
+import type { SongVisibility } from "@/db/types";
 
 export interface SongView {
   id: string;
@@ -14,6 +16,7 @@ export interface SongView {
   lyrics: string;
   genre?: string;
   isPublic?: boolean;
+  visibility?: SongVisibility | null;
   version?: number;
   projectId?: string;
 }
@@ -155,6 +158,11 @@ export function SongPlayer({
               </span>
             )}
           </div>
+          {canEdit && (
+            <div className="mt-3">
+              <VisibilityControl songId={song.id} visibility={song.visibility} />
+            </div>
+          )}
           {shareUrl && (
             <p className="mt-2 break-all text-xs text-green-700">Public link copied: {shareUrl}</p>
           )}
