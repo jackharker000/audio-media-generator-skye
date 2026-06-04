@@ -1,4 +1,4 @@
-import { NonRetriableError } from "inngest";
+import { FatalPipelineError } from "./errors";
 import {
   critiqueLyrics,
   rewriteLyrics,
@@ -55,7 +55,7 @@ export async function refineAndVerify(
       factCheckLyrics(repaired, km),
     );
     if (recheck.hardFail) {
-      throw new NonRetriableError(
+      throw new FatalPipelineError(
         "Couldn't verify some lyrics against your sources. Try narrowing the focus or providing clearer source text.",
       );
     }

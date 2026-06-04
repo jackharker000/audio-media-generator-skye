@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // The pipeline + several adapters are server-only and pull in Node built-ins
-  // and large native deps (ffmpeg, pdf, mammoth). Keep them external to the
-  // server bundle so they are required at runtime instead of bundled.
+  // Server-only packages with native/Node deps: keep them external to the
+  // server bundle so they're required at runtime rather than bundled.
   serverExternalPackages: [
-    "@aws-sdk/client-s3",
-    "@aws-sdk/s3-request-presigner",
+    "firebase-admin",
+    "@google-cloud/firestore",
+    "@google-cloud/storage",
     "@google-cloud/text-to-speech",
     "fluent-ffmpeg",
     "ffmpeg-static",
@@ -13,12 +13,17 @@ const nextConfig = {
     "mammoth",
   ],
   eslint: {
-    // Lint is run separately in CI; don't fail production builds on lint.
+    // Lint runs separately in CI; don't fail production builds on lint.
     ignoreDuringBuilds: true,
   },
   experimental: {
-    // Server Actions are used for some mutations.
     serverActions: { bodySizeLimit: "10mb" },
+  },
+  // The SSE route runs the pipeline (incl. optional ffmpeg beat-mixing); bundle
+  // the static ffmpeg binary so it's available on Vercel. If absent, the Google
+  // TTS engine gracefully falls back to speech-only.
+  outputFileTracingIncludes: {
+    "/api/jobs/[id]/stream": ["./node_modules/ffmpeg-static/ffmpeg"],
   },
 };
 

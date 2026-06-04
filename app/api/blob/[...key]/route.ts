@@ -1,4 +1,4 @@
-import { getContentType, getObjectBuffer, usingR2 } from "@/storage";
+import { getContentType, getObjectBuffer, usingCloud } from "@/storage";
 
 export const runtime = "nodejs";
 
@@ -7,8 +7,8 @@ export async function GET(
   _req: Request,
   ctx: { params: Promise<{ key: string[] }> },
 ) {
-  if (usingR2()) {
-    return new Response("Use signed R2 URLs in production", { status: 404 });
+  if (usingCloud()) {
+    return new Response("Use signed Cloud Storage URLs in production", { status: 404 });
   }
   const { key } = await ctx.params;
   const path = key.map((s) => decodeURIComponent(s)).join("/");

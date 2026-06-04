@@ -1,22 +1,20 @@
-import { and, desc, eq } from "drizzle-orm";
-import { db } from "@/db";
-import {
-  generationJobs,
-  projects,
-  shares,
-  songs,
-  sourceDocuments,
-  type DbGenerationJob,
-  type DbProject,
-  type DbSong,
-  type DbSourceDocument,
-} from "@/db/schema";
-import { inngest } from "@/inngest/client";
+import { COLLECTIONS, getDb } from "@/db";
+import type {
+  DbGenerationJob,
+  DbProject,
+  DbShare,
+  DbSong,
+  DbSourceDocument,
+} from "@/db/types";
 import { putObject } from "@/storage";
 import { env } from "@/lib/env";
 import { songsToday } from "@/pipeline/jobStore";
 import { slugify } from "@/lib/utils";
 import type { JobInputParams } from "@/shared/types";
+
+const col = (name: string) => getDb().collection(name);
+const byNewest = <T extends { createdAt: number }>(a: T, b: T) => b.createdAt - a.createdAt;
+const withId = <T>(d: { id: string; data: () => any }): T => ({ id: d.id, ...d.data() }) as T;
 
 // ---- Projects -------------------------------------------------------------
 
@@ -24,54 +22,47 @@ export async function createProject(
   userId: string,
   data: { title: string; description?: string; focusPromptDefault?: string },
 ): Promise<DbProject> {
-  const [row] = await db
-    .insert(projects)
-    .values({
-      userId,
-      title: data.title.trim() || "Untitled notebook",
-      description: data.description,
-      focusPromptDefault: data.focusPromptDefault,
-    })
-    .returning();
-  return row;
+  const doc = {
+    userId,
+    title: data.title.trim() || "Untitled notebook",
+    description: data.description ?? null,
+    focusPromptDefault: data.focusPromptDefault ?? null,
+    createdAt: Date.now(),
+  };
+  const ref = await col(COLLECTIONS.projects).add(doc);
+  return { id: ref.id, ...doc };
 }
 
-export function listProjects(userId: string): Promise<DbProject[]> {
-  return db
-    .select()
-    .from(projects)
-    .where(eq(projects.userId, userId))
-    .orderBy(desc(projects.createdAt));
+export async function listProjects(userId: string): Promise<DbProject[]> {
+  const snap = await col(COLLECTIONS.projects).where("userId", "==", userId).get();
+  return snap.docs.map((d) => withId<DbProject>(d)).sort(byNewest);
 }
 
 async function assertProjectOwner(userId: string, projectId: string): Promise<DbProject> {
-  const [p] = await db.select().from(projects).where(eq(projects.id, projectId));
+  const snap = await col(COLLECTIONS.projects).doc(projectId).get();
+  const p = snap.exists ? withId<DbProject>(snap) : null;
   if (!p || p.userId !== userId) throw new Error("Project not found");
   return p;
 }
 
 export async function getProjectDetail(userId: string, projectId: string) {
   const project = await assertProjectOwner(userId, projectId);
-  const [sources, projectSongs, jobs] = await Promise.all([
-    db.select().from(sourceDocuments).where(eq(sourceDocuments.projectId, projectId)),
-    db
-      .select()
-      .from(songs)
-      .where(eq(songs.projectId, projectId))
-      .orderBy(desc(songs.createdAt)),
-    db
-      .select()
-      .from(generationJobs)
-      .where(eq(generationJobs.projectId, projectId))
-      .orderBy(desc(generationJobs.createdAt))
-      .limit(10),
+  const [srcSnap, songSnap, jobSnap] = await Promise.all([
+    col(COLLECTIONS.sources).where("projectId", "==", projectId).get(),
+    col(COLLECTIONS.songs).where("projectId", "==", projectId).get(),
+    col(COLLECTIONS.jobs).where("projectId", "==", projectId).get(),
   ]);
-  return { project, sources, songs: projectSongs, jobs };
+  return {
+    project,
+    sources: srcSnap.docs.map((d) => withId<DbSourceDocument>(d)).sort(byNewest),
+    songs: songSnap.docs.map((d) => withId<DbSong>(d)).sort(byNewest),
+    jobs: jobSnap.docs.map((d) => withId<DbGenerationJob>(d)).sort(byNewest).slice(0, 10),
+  };
 }
 
 export async function deleteProject(userId: string, projectId: string): Promise<void> {
   await assertProjectOwner(userId, projectId);
-  await db.delete(projects).where(eq(projects.id, projectId));
+  await col(COLLECTIONS.projects).doc(projectId).delete();
 }
 
 // ---- Sources --------------------------------------------------------------
@@ -82,20 +73,20 @@ export async function addPasteSource(
   data: { title?: string; text: string },
 ): Promise<DbSourceDocument> {
   await assertProjectOwner(userId, projectId);
-  const [row] = await db
-    .insert(sourceDocuments)
-    .values({
-      projectId,
-      userId,
-      kind: "paste",
-      filename: data.title?.trim() || "Pasted notes",
-      mime: "text/plain",
-      status: "extracted",
-      normalizedText: data.text,
-      tokenEstimate: Math.ceil(data.text.length / 4),
-    })
-    .returning();
-  return row;
+  const doc = {
+    projectId,
+    userId,
+    kind: "paste" as const,
+    filename: data.title?.trim() || "Pasted notes",
+    mime: "text/plain",
+    status: "extracted" as const,
+    normalizedText: data.text,
+    tokenEstimate: Math.ceil(data.text.length / 4),
+    warnings: [] as string[],
+    createdAt: Date.now(),
+  };
+  const ref = await col(COLLECTIONS.sources).add(doc);
+  return { id: ref.id, ...doc };
 }
 
 export async function addUploadSource(
@@ -106,26 +97,26 @@ export async function addUploadSource(
   await assertProjectOwner(userId, projectId);
   const key = `sources/${projectId}/${crypto.randomUUID()}-${slugify(file.filename) || "file"}`;
   await putObject(key, file.buffer, file.mime);
-  const [row] = await db
-    .insert(sourceDocuments)
-    .values({
-      projectId,
-      userId,
-      kind: "upload",
-      filename: file.filename,
-      mime: file.mime,
-      r2Key: key,
-      bytes: file.buffer.length,
-      status: "stored",
-    })
-    .returning();
-  return row;
+  const doc = {
+    projectId,
+    userId,
+    kind: "upload" as const,
+    filename: file.filename,
+    mime: file.mime ?? null,
+    storageKey: key,
+    bytes: file.buffer.length,
+    status: "stored" as const,
+    createdAt: Date.now(),
+  };
+  const ref = await col(COLLECTIONS.sources).add(doc);
+  return { id: ref.id, ...doc };
 }
 
 export async function deleteSource(userId: string, sourceId: string): Promise<void> {
-  const [s] = await db.select().from(sourceDocuments).where(eq(sourceDocuments.id, sourceId));
+  const snap = await col(COLLECTIONS.sources).doc(sourceId).get();
+  const s = snap.exists ? withId<DbSourceDocument>(snap) : null;
   if (!s || s.userId !== userId) throw new Error("Source not found");
-  await db.delete(sourceDocuments).where(eq(sourceDocuments.id, sourceId));
+  await col(COLLECTIONS.sources).doc(sourceId).delete();
 }
 
 // ---- Generation -----------------------------------------------------------
@@ -137,46 +128,46 @@ export async function startGeneration(
 ): Promise<string> {
   await assertProjectOwner(userId, projectId);
 
-  const used = await songsToday(userId);
-  if (used >= env.quotaSongsPerDay()) {
+  if ((await songsToday(userId)) >= env.quotaSongsPerDay()) {
     throw new Error(`Daily limit reached (${env.quotaSongsPerDay()} songs). Try again tomorrow.`);
   }
 
-  const srcCount = await db
-    .select({ id: sourceDocuments.id })
-    .from(sourceDocuments)
-    .where(eq(sourceDocuments.projectId, projectId));
-  if (srcCount.length === 0) {
+  const srcSnap = await col(COLLECTIONS.sources).where("projectId", "==", projectId).limit(1).get();
+  if (srcSnap.empty) {
     throw new Error("Add at least one source (file or pasted text) before generating.");
   }
 
-  const [job] = await db
-    .insert(generationJobs)
-    .values({ projectId, userId, status: "queued", inputParams: input })
-    .returning({ id: generationJobs.id });
-
-  await inngest.send({ name: "song/generate.requested", data: { jobId: job.id } });
-  return job.id;
+  const now = Date.now();
+  const ref = await col(COLLECTIONS.jobs).add({
+    projectId,
+    userId,
+    status: "queued",
+    stageStates: {},
+    inputParams: input,
+    createdAt: now,
+    updatedAt: now,
+  });
+  // The pipeline is driven by the SSE stream endpoint (keeps the function alive).
+  return ref.id;
 }
 
 export async function getJob(userId: string, jobId: string): Promise<DbGenerationJob | null> {
-  const [job] = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId));
+  const snap = await col(COLLECTIONS.jobs).doc(jobId).get();
+  const job = snap.exists ? withId<DbGenerationJob>(snap) : null;
   if (!job || job.userId !== userId) return null;
   return job;
 }
 
 // ---- Songs ----------------------------------------------------------------
 
-export function listSongs(userId: string): Promise<DbSong[]> {
-  return db
-    .select()
-    .from(songs)
-    .where(eq(songs.userId, userId))
-    .orderBy(desc(songs.createdAt));
+export async function listSongs(userId: string): Promise<DbSong[]> {
+  const snap = await col(COLLECTIONS.songs).where("userId", "==", userId).get();
+  return snap.docs.map((d) => withId<DbSong>(d)).sort(byNewest);
 }
 
 export async function getSong(userId: string, songId: string): Promise<DbSong | null> {
-  const [song] = await db.select().from(songs).where(eq(songs.id, songId));
+  const snap = await col(COLLECTIONS.songs).doc(songId).get();
+  const song = snap.exists ? withId<DbSong>(snap) : null;
   if (!song || song.userId !== userId) return null;
   return song;
 }
@@ -192,7 +183,6 @@ export async function regenerateSong(
     genre: overrides.genre ?? song.params.genre,
     voiceGender: overrides.voiceGender ?? song.params.voice?.gender,
     voiceStyle: overrides.voiceStyle ?? song.params.voice?.style,
-    provider: overrides.provider ?? song.providerId ?? undefined,
     reuseKnowledgeMapId: song.knowledgeMapId ?? undefined,
     parentSongId: song.id,
     seed: overrides.seed ?? Math.floor(Math.random() * 1_000_000),
@@ -214,7 +204,6 @@ export async function editSong(
     voiceGender: data.voiceGender ?? song.params.voice?.gender,
     reuseKnowledgeMapId: song.knowledgeMapId ?? undefined,
     parentSongId: song.id,
-    provider: song.providerId ?? undefined,
   };
   return startGeneration(userId, song.projectId, input);
 }
@@ -229,19 +218,28 @@ export async function createShare(
   const song = await getSong(userId, songId);
   if (!song) throw new Error("Song not found");
 
-  const [existing] = await db.select().from(shares).where(eq(shares.songId, songId));
-  if (existing) {
-    await db.update(shares).set({ visibility }).where(eq(shares.id, existing.id));
+  const existingSnap = await col(COLLECTIONS.shares).where("songId", "==", songId).limit(1).get();
+  if (!existingSnap.empty) {
+    const existing = withId<DbShare>(existingSnap.docs[0]);
+    await col(COLLECTIONS.shares).doc(existing.id).update({ visibility });
     if (visibility === "public") {
-      await db.update(songs).set({ isPublic: true }).where(eq(songs.id, songId));
+      await col(COLLECTIONS.songs).doc(songId).update({ isPublic: true });
     }
     return existing.slug;
   }
 
   const slug = `${slugify(song.title)}-${crypto.randomUUID().slice(0, 6)}`;
-  await db.insert(shares).values({ songId, ownerId: userId, slug, visibility });
+  await col(COLLECTIONS.shares).add({
+    songId,
+    ownerId: userId,
+    slug,
+    visibility,
+    allowDownload: true,
+    expiresAt: null,
+    createdAt: Date.now(),
+  });
   if (visibility === "public") {
-    await db.update(songs).set({ isPublic: true }).where(eq(songs.id, songId));
+    await col(COLLECTIONS.songs).doc(songId).update({ isPublic: true });
   }
   return slug;
 }
@@ -249,15 +247,19 @@ export async function createShare(
 export async function deleteShare(userId: string, songId: string): Promise<void> {
   const song = await getSong(userId, songId);
   if (!song) throw new Error("Song not found");
-  await db.delete(shares).where(eq(shares.songId, songId));
-  await db.update(songs).set({ isPublic: false }).where(eq(songs.id, songId));
+  const snap = await col(COLLECTIONS.shares).where("songId", "==", songId).get();
+  await Promise.all(snap.docs.map((d) => col(COLLECTIONS.shares).doc(d.id).delete()));
+  await col(COLLECTIONS.songs).doc(songId).update({ isPublic: false });
 }
 
-export async function getShareBySlug(slug: string): Promise<{ share: typeof shares.$inferSelect; song: DbSong } | null> {
-  const [share] = await db.select().from(shares).where(eq(shares.slug, slug));
-  if (!share) return null;
-  if (share.expiresAt && share.expiresAt.getTime() < Date.now()) return null;
-  const [song] = await db.select().from(songs).where(eq(songs.id, share.songId));
-  if (!song) return null;
-  return { share, song };
+export async function getShareBySlug(
+  slug: string,
+): Promise<{ share: DbShare; song: DbSong } | null> {
+  const snap = await col(COLLECTIONS.shares).where("slug", "==", slug).limit(1).get();
+  if (snap.empty) return null;
+  const share = withId<DbShare>(snap.docs[0]);
+  if (share.expiresAt && share.expiresAt < Date.now()) return null;
+  const songSnap = await col(COLLECTIONS.songs).doc(share.songId).get();
+  if (!songSnap.exists) return null;
+  return { share, song: withId<DbSong>(songSnap) };
 }

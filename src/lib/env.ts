@@ -1,6 +1,8 @@
+import { getServiceAccount, getStorageBucket } from "./googleCreds";
+
 /**
  * Centralized, lazy environment access. Nothing throws at import time so the
- * app can build and run with only a SUBSET of services configured.
+ * app can build and run with only a subset of services configured.
  */
 
 export function optionalEnv(key: string): string | undefined {
@@ -22,36 +24,23 @@ export function intEnv(key: string, fallback: number): number {
 }
 
 export const env = {
-  appUrl: () => optionalEnv("APP_URL") ?? optionalEnv("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000",
-  databaseUrl: () => optionalEnv("DATABASE_URL"),
+  appUrl: () =>
+    optionalEnv("APP_URL") ?? optionalEnv("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000",
   geminiApiKey: () => optionalEnv("GEMINI_API_KEY"),
-  falKey: () => optionalEnv("FAL_KEY"),
-  falWebhookSecret: () => optionalEnv("FAL_WEBHOOK_SECRET"),
-  musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "fal-acestep",
-  musicFallbackChain: () =>
-    (optionalEnv("MUSIC_FALLBACK_CHAIN") ?? "fal-acestep,google-tts-beat")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  r2: () => ({
-    accountId: optionalEnv("R2_ACCOUNT_ID"),
-    accessKeyId: optionalEnv("R2_ACCESS_KEY_ID"),
-    secretAccessKey: optionalEnv("R2_SECRET_ACCESS_KEY"),
-    bucket: optionalEnv("R2_BUCKET") ?? "mnemosong",
-    publicBaseUrl: optionalEnv("R2_PUBLIC_BASE_URL"),
-  }),
+  musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "google-tts-beat",
+  storageBucket: () => getStorageBucket(),
   maxRewrites: () => intEnv("PIPELINE_MAX_REWRITES", 2),
   quotaSongsPerDay: () => intEnv("QUOTA_SONGS_PER_DAY", 20),
 };
 
-/** Feature flags derived from which env vars are present. */
+/** Feature flags derived from which Google credentials are present. */
 export const features = {
-  hasDb: () => !!env.databaseUrl(),
-  hasGemini: () => !!env.geminiApiKey(),
-  hasFal: () => !!env.falKey(),
-  hasR2: () => {
-    const r = env.r2();
-    return !!(r.accountId && r.accessKeyId && r.secretAccessKey);
-  },
-  hasTts: () => !!optionalEnv("GOOGLE_APPLICATION_CREDENTIALS"),
+  /** Firestore (our database) — needs a Google service account. */
+  hasDb: () => !!getServiceAccount(),
+  hasFirebase: () => !!getServiceAccount(),
+  hasGemini: () => !!optionalEnv("GEMINI_API_KEY"),
+  /** Google Cloud Text-to-Speech (the music engine) uses the same SA. */
+  hasTts: () => !!getServiceAccount(),
+  /** Cloud Storage needs the SA and a bucket name. */
+  hasCloudStorage: () => !!getServiceAccount() && !!getStorageBucket(),
 };

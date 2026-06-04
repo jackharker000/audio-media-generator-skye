@@ -4,99 +4,109 @@
 
 MnemoSong is a NotebookLM-style web app: upload your study material (PDF / DOCX /
 TXT / Markdown) or paste notes, add an optional prompt (e.g. _"focus on the Krebs
-cycle, make it upbeat pop"_), and it writes and **sings** a catchy, **fact-checked**
-song whose lyrics encode the key facts — with the most important ones drilled into
-a repeating chorus.
+cycle, make it upbeat"_), and it writes a catchy, **fact-checked** song whose
+lyrics encode the key facts — with the most important ones drilled into a
+repeating chorus.
 
-It's designed to run on **free and low-cost AI**: Google **Gemini** (free tier)
-does all the "thinking", and a swappable music engine sings the result for pennies —
-or for **$0** via a Google Text-to-Speech fallback.
+**100% Google free tier.** Every external component is Google/Firebase:
 
----
+| Need | Service (free tier) |
+|---|---|
+| Lyrics + all reasoning | **Google Gemini** (`@google/genai`, 2.5 Flash / Flash-Lite) |
+| Database | **Cloud Firestore** (Firebase) |
+| File + audio storage | **Cloud Storage** (Firebase) |
+| The "music" | **Google Cloud Text-to-Speech** |
+| Sign-in | **Google OAuth** (Auth.js) |
+| Hosting | **Vercel** |
 
-## Why this architecture?
+> ⚠️ **Spoken, not sung.** Google's free tier can't truly *sing* (Lyria with
+> vocals is paid). So MnemoSong's Google-only engine has Gemini write the lyrics
+> and **Google Cloud TTS speak/rap them over an optional beat**. It's free and
+> maximally intelligible — great for memorization.
 
-Google's cheap/free tier **can't sing lyrics** (Lyria 2's API is instrumental-only;
-Lyria 3 with vocals has no free tier). So we split the work:
+## How it works
 
-- **Gemini (free)** runs a multi-stage agentic pipeline: extract → knowledge-map →
-  plan → write lyrics → **critique → rewrite** → an independent **fact-check gate**.
-- **A cheap open song model** (ACE-Step via fal.ai, ~1–3¢/song) only does the final
-  "sing the lyrics" render. It's behind a `MusicProvider` abstraction so you can swap
-  in MiniMax/Sonauto, or fall back to a **$0** Google-TTS-over-a-beat path.
+A multi-stage agentic pipeline (all Gemini, all free):
 
 ```
-upload/paste ─► [Inngest durable pipeline]
-  extract(local) → knowledge map (map/reduce, Gemini Flash-Lite/Flash)
-  → song plan → lyric draft → critique↔rewrite loop → FACT-CHECK GATE
-  → style params → MUSIC (MusicProvider, async webhook) → post-process → finalize
-        │ progress (SSE)                       │ audio
-        ▼                                       ▼
-     Postgres                              R2 / local blob
+upload/paste ─► extract (local) ─► knowledge map (map/reduce)
+   ─► song plan ─► lyric draft ─► critique ↔ rewrite loop
+   ─► INDEPENDENT FACT-CHECK GATE ─► style ─► Google TTS (+beat) ─► finalize
 ```
 
-Every lyric line is bound to a source fact, the critique stage checks each line
-against its evidence, and a separate grounding gate can **hard-fail** a song whose
-claims aren't supported — so it stays a study tool, not a hallucination machine.
+Every lyric line is bound to a source fact; the critique stage checks each line
+against its evidence; and a separate grounding gate can **hard-fail** a song
+whose claims aren't supported — so it stays a study tool, not a hallucination
+machine.
+
+There's **no external job queue**. Because Google TTS is synchronous, the
+pipeline runs inside the progress (SSE) request — which is exactly what makes it
+deploy cleanly to Vercel functions, with a stale-job re-drive guard for safety.
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| App | Next.js 15 (App Router, TypeScript, React 19), Tailwind |
-| Pipeline | **Inngest** durable step functions (`waitForEvent` for async music) |
-| LLM | **Google Gemini** free tier (`@google/genai`, 2.5 Flash / Flash-Lite) |
-| Music | `MusicProvider`: **ACE-Step** (fal.ai) · MiniMax/Sonauto · **Google TTS** ($0) |
-| DB | Postgres (Neon) + **Drizzle ORM** |
-| Storage | **Cloudflare R2** (S3 API) — or local filesystem fallback |
-| Auth | **Auth.js (NextAuth v5)** + Google OAuth (+ dev login) |
+Next.js 15 (App Router, TypeScript, React 19) · Tailwind · Auth.js (NextAuth v5)
+· `firebase-admin` (Firestore + Storage) · `@google/genai` ·
+`@google-cloud/text-to-speech` · ffmpeg (optional beat mixing).
 
-## Quick start
+## Quick start (local)
 
 ```bash
 pnpm install
-cp .env.example .env.local        # fill in the keys you have (see below)
-pnpm db:push                      # create tables (needs DATABASE_URL)
-pnpm dev                          # http://localhost:3000
-# in a second terminal, run the Inngest dev server so the pipeline executes:
-npx inngest-cli@latest dev -u http://localhost:3000/api/inngest
+cp .env.example .env.local        # fill in the keys (see below)
+pnpm dev                          # http://localhost:3000  → sign in with "Dev login"
 ```
 
-### Minimum to generate a song
+Firestore is schemaless — no migrations to run. With `DEV_LOGIN=1` you can sign
+in locally without Google OAuth. With no Cloud Storage configured, generated
+audio is written to `.data/` and served locally.
 
-| Goal | Required env |
-|---|---|
-| **Free / local** (spoken over a beat) | `DATABASE_URL`, `GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`, `MUSIC_PROVIDER=google-tts-beat`, `DEV_LOGIN=1` |
-| **Sung** (recommended) | the above + `FAL_KEY`, `MUSIC_PROVIDER=fal-acestep` |
-| **Full product** | add `R2_*`, `AUTH_GOOGLE_ID/SECRET`, `AUTH_SECRET` |
+### What you need
 
-With no `DATABASE_URL`/`R2_*`, the app still builds and runs; storage falls back to
-the local filesystem (`.data/`), and pages show a setup notice until a DB is set.
+1. **Gemini API key** — https://aistudio.google.com/apikey → `GEMINI_API_KEY`.
+2. **A Firebase project** (free Spark plan):
+   - Enable **Firestore** and **Storage**.
+   - Enable the **Cloud Text-to-Speech API** in the Google Cloud console.
+   - Create a **service account key** (JSON).
+   - Put the JSON inline in `FIREBASE_SERVICE_ACCOUNT_JSON` (one line) or point
+     `GOOGLE_APPLICATION_CREDENTIALS` at the file. Set `FIREBASE_STORAGE_BUCKET`.
+3. (Production) **Google OAuth** client → `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`,
+   and `AUTH_SECRET` (`npx auth secret`).
 
-See [`.env.example`](./.env.example) for every variable.
+See [`.env.example`](./.env.example) for the full list.
 
-## Where the API tokens come from
+## Deploy to Vercel
 
-- **`GEMINI_API_KEY`** — https://aistudio.google.com/apikey (free tier).
-- **`FAL_KEY`** — https://fal.ai/dashboard/keys (pay-as-you-go; ACE-Step is ~1–3¢/song).
-- **`GOOGLE_APPLICATION_CREDENTIALS`** — a Google Cloud service-account JSON with the
-  Text-to-Speech API enabled (free tier ~1M chars/month).
-- **`DATABASE_URL`** — a Neon Postgres connection string (https://neon.tech).
-- **`R2_*`** — Cloudflare R2 bucket + access keys (https://developers.cloudflare.com/r2).
-- **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — Google OAuth client (optional; use
-  `DEV_LOGIN=1` locally instead).
+1. Push this repo and **import it on Vercel** (framework auto-detected as Next.js).
+2. Add environment variables (Project → Settings → Environment Variables):
+   - `GEMINI_API_KEY`
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` — paste the **entire** service-account JSON
+     as a single value (Vercel handles the newlines).
+   - `FIREBASE_STORAGE_BUCKET`, and optionally `FIREBASE_PROJECT_ID`
+   - `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
+   - `APP_URL` / `NEXT_PUBLIC_APP_URL` / `AUTH_URL` = your deployment URL
+   - `MUSIC_PROVIDER=google-tts-beat`
+3. Deploy. Add your Vercel domain to the Google OAuth client's authorized
+   redirect URIs (`https://<domain>/api/auth/callback/google`).
+
+Notes for Vercel:
+- The pipeline runs inside the `/api/jobs/[id]/stream` function (`maxDuration =
+  300`). Very large documents could exceed that; trim sources or split them.
+- ffmpeg is bundled for beat-mixing; if it's unavailable in the runtime the TTS
+  engine falls back to clean speech with no beat.
 
 ## Project layout
 
 ```
 app/                     # Next.js routes (UI pages + /api/* route handlers)
 src/agents/              # Gemini client, prompts, Zod schemas (== shared types)
-src/pipeline/            # Inngest orchestration + per-stage logic + job store
-src/music/               # MusicProvider abstraction + adapters + registry
+src/pipeline/            # in-process runner + per-stage logic + refine core + job store
+src/music/               # provider abstraction + Google TTS engine + registry
 src/extract/             # PDF/DOCX/text extraction + token-aware chunking
-src/storage/             # R2 (S3 API) with local-filesystem fallback
-src/db/                  # Drizzle schema + migrations + client
-src/server/              # service layer + http/auth helpers shared by routes & pages
+src/storage/             # Cloud Storage (Firebase) with local-filesystem fallback
+src/db/                  # Firestore client + document types
+src/lib/                 # Firebase Admin init, Google credential resolution, env
+src/server/              # service layer + http/auth helpers used by routes & pages
 src/components/          # React UI (client components)
 ```
 
@@ -104,9 +114,7 @@ src/components/          # React UI (client components)
 
 - **Gemini free tier** ≈ 25 songs/day per key (Flash's 250 req/day is the binding
   limit). Push bulk work to Flash-Lite or enable cheap paid billing for more.
-- **Music providers**: ACE-Step is Apache-2.0 (commercial use OK). Verify the ToS of
-  MiniMax/Sonauto for your use. Songs are AI-generated — label them as such.
 - **Optional beats**: drop royalty-free loops in `public/beats/<genre>.mp3` (and a
-  `default.mp3`) to give the free TTS path a backing track. Keep them license-clear.
+  `default.mp3`) to give the TTS engine a backing track. Keep them license-clear.
 
 > Songs are AI-generated; always verify important facts against your sources.

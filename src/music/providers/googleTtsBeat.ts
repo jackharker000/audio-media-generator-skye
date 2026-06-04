@@ -2,14 +2,15 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { features } from "@/lib/env";
+import { getGoogleClientOptions } from "@/lib/googleCreds";
 import { putObject } from "@/storage";
 import type { MusicProvider, MusicRequest, MusicResult } from "../types";
 
 /**
- * The genuine $0 path: Google Cloud Text-to-Speech "raps"/speaks the lyrics
- * (free tier: ~1M chars/month), optionally mixed over a royalty-free beat with
- * ffmpeg. Not true singing, but fully free and maximally intelligible — a good
- * fallback for a memorization tool. Runs synchronously (no webhook).
+ * The Google-only music engine. Google Cloud Text-to-Speech (free tier ~1M
+ * chars/month) speaks/raps the lyrics, optionally mixed over a royalty-free
+ * beat with ffmpeg. Not true singing, but fully free and maximally intelligible
+ * for a memorization tool. Runs synchronously — no webhooks.
  */
 
 function stripStructureTags(lyrics: string): string {
@@ -33,8 +34,7 @@ function ssmlGender(req: MusicRequest): "FEMALE" | "MALE" | "NEUTRAL" {
 
 async function synthesize(text: string, req: MusicRequest): Promise<Buffer> {
   const { TextToSpeechClient } = await import("@google-cloud/text-to-speech");
-  const client = new TextToSpeechClient();
-  // Slightly faster, rhythmic delivery for a "rap over a beat" feel.
+  const client = new TextToSpeechClient(getGoogleClientOptions());
   const speakingRate = req.voice?.style === "rap" ? 1.15 : 1.0;
   const [resp] = await client.synthesizeSpeech({
     input: { text },
@@ -114,24 +114,24 @@ export const googleTtsBeat: MusicProvider = {
   async render(req, { jobId }): Promise<MusicResult> {
     if (!features.hasTts()) {
       throw new Error(
-        "GOOGLE_APPLICATION_CREDENTIALS not set — the free Google TTS fallback needs a service account.",
+        "No Google service account configured — the Google TTS music engine can't run.",
       );
     }
     const text = stripStructureTags(req.lyrics);
     const speech = await synthesize(text, req);
 
-    const beat = await findBeat(req.genre);
     let audio = speech;
+    const beat = await findBeat(req.genre);
     if (beat) {
       try {
         audio = await mixSpeechOverBeat(speech, beat);
       } catch {
-        audio = speech; // fall back to speech-only if ffmpeg/mix fails
+        audio = speech; // ffmpeg unavailable (e.g. some serverless) → speech only
       }
     }
 
     const key = `songs/${jobId}.mp3`;
     await putObject(key, audio, "audio/mpeg");
-    return { r2Key: key, contentType: "audio/mpeg" };
+    return { storageKey: key, contentType: "audio/mpeg" };
   },
 };

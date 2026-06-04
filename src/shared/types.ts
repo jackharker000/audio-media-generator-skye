@@ -14,7 +14,7 @@ export type {
   SongMeta,
 } from "@/agents/schemas";
 
-export type JobStatus = "queued" | "running" | "waiting_music" | "succeeded" | "failed";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed";
 
 export const STAGE_NAMES = [
   "ingest",

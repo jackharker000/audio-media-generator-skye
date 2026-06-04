@@ -1,32 +1,26 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
-import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { eq } from "drizzle-orm";
+import { FirestoreAdapter } from "@auth/firebase-adapter";
 import { getDb } from "@/db";
-import { users, accounts, sessions, verificationTokens } from "@/db/schema";
 import { features, optionalEnv } from "@/lib/env";
 
 /**
- * Auth.js (NextAuth v5): Google OAuth in production. When Google isn't
- * configured (local dev), a guarded "dev login" lets you sign in as a demo
- * user so the full app is usable without OAuth setup. Both paths store the
- * user in our Postgres so foreign keys to projects/songs resolve.
+ * Auth.js (NextAuth v5): Google OAuth in production, stored in Firestore via the
+ * Firebase adapter. When Google isn't configured (local dev), a guarded "dev
+ * login" signs you in as a demo user so the app is usable without OAuth setup.
  */
 const hasGoogle = !!(optionalEnv("AUTH_GOOGLE_ID") && optionalEnv("AUTH_GOOGLE_SECRET"));
 const devLogin =
   optionalEnv("DEV_LOGIN") === "1" || (!hasGoogle && process.env.NODE_ENV !== "production");
 
 async function ensureDemoUser(): Promise<string> {
-  const database = getDb();
-  const email = "dev@mnemosong.local";
-  const [existing] = await database.select().from(users).where(eq(users.email, email));
-  if (existing) return existing.id;
-  const [created] = await database
-    .insert(users)
-    .values({ email, name: "Dev User" })
-    .returning({ id: users.id });
-  return created.id;
+  const id = "dev-user";
+  await getDb()
+    .collection("users")
+    .doc(id)
+    .set({ name: "Dev User", email: "dev@mnemosong.local", emailVerified: null }, { merge: true });
+  return id;
 }
 
 function buildConfig() {
@@ -54,18 +48,11 @@ function buildConfig() {
     );
   }
 
-  // Credentials requires JWT sessions; OAuth-only uses database sessions.
+  // Credentials requires JWT sessions; OAuth-only can use database sessions.
   const strategy: "jwt" | "database" = hasGoogle && !devLogin ? "database" : "jwt";
 
   return {
-    adapter: features.hasDb()
-      ? DrizzleAdapter(getDb(), {
-          usersTable: users,
-          accountsTable: accounts,
-          sessionsTable: sessions,
-          verificationTokensTable: verificationTokens,
-        })
-      : undefined,
+    adapter: features.hasDb() ? FirestoreAdapter(getDb()) : undefined,
     session: { strategy },
     trustHost: true,
     providers,

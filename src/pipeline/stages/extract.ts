@@ -2,7 +2,7 @@ import { extractDocument } from "@/extract";
 import { getObjectBuffer } from "@/storage";
 import { estimateTokens, stableHash } from "@/lib/utils";
 import * as store from "@/pipeline/jobStore";
-import type { DbSourceDocument } from "@/db/schema";
+import type { DbSourceDocument } from "@/db/types";
 
 export interface ExtractedBundle {
   normalizedText: string;
@@ -20,8 +20,8 @@ export async function extractSources(sources: DbSourceDocument[]): Promise<Extra
 
   for (const s of sources) {
     let text = s.normalizedText ?? "";
-    if (!text && s.r2Key) {
-      const buf = await getObjectBuffer(s.r2Key);
+    if (!text && s.storageKey) {
+      const buf = await getObjectBuffer(s.storageKey);
       const res = await extractDocument(buf, s.filename, s.mime ?? undefined);
       text = res.text;
       if (res.warnings.length) warnings.push(...res.warnings.map((w) => `${s.filename}: ${w}`));
