@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { features } from "@/lib/env";
 import { requireUserPage } from "@/server/pageAuth";
-import { getProjectDetail } from "@/server/service";
+import { getMySettings, getProjectDetail } from "@/server/service";
 import { NotebookClient } from "@/components/NotebookClient";
 import { ProjectActions } from "@/components/ProjectActions";
 import { SetupNotice } from "@/components/SetupNotice";
@@ -12,6 +12,7 @@ export default async function NotebookPage({ params }: { params: Promise<{ id: s
   if (!features.hasDb()) return <SetupNotice />;
   const userId = await requireUserPage();
   const { id } = await params;
+  const settings = await getMySettings(userId);
 
   let detail: Awaited<ReturnType<typeof getProjectDetail>>;
   try {
@@ -34,6 +35,8 @@ export default async function NotebookPage({ params }: { params: Promise<{ id: s
       <NotebookClient
         projectId={id}
         defaultFocus={detail.project.focusPromptDefault ?? undefined}
+        defaultGenre={settings.defaultGenre ?? undefined}
+        defaultVoiceGender={settings.defaultVoiceGender ?? undefined}
         activeJobId={
           detail.jobs.find((j) => j.status === "queued" || j.status === "running")?.id ?? null
         }

@@ -38,6 +38,11 @@ export async function Nav() {
               )}
             </Link>
           )}
+          {user && (
+            <Link href="/settings" className="text-slate-600 hover:text-slate-900">
+              Settings
+            </Link>
+          )}
           {admin && (
             <Link href="/admin" className="text-slate-600 hover:text-slate-900">
               Admin

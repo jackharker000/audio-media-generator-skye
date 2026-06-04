@@ -25,12 +25,16 @@ export function NotebookClient({
   songs,
   defaultFocus,
   activeJobId,
+  defaultGenre,
+  defaultVoiceGender,
 }: {
   projectId: string;
   initialSources: SourceView[];
   songs: SongRef[];
   defaultFocus?: string;
   activeJobId?: string | null;
+  defaultGenre?: string;
+  defaultVoiceGender?: string;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -43,8 +47,8 @@ export function NotebookClient({
 
   // Generation options
   const [focus, setFocus] = useState(defaultFocus ?? "");
-  const [genre, setGenre] = useState("pop");
-  const [voiceGender, setVoiceGender] = useState("female");
+  const [genre, setGenre] = useState(defaultGenre || "pop");
+  const [voiceGender, setVoiceGender] = useState(defaultVoiceGender || "female");
   const [duration, setDuration] = useState(75);
 
   async function uploadFile(file: File) {

@@ -109,6 +109,9 @@ export interface DbUser {
   image?: string | null;
   disabled?: boolean | null;
   quotaOverride?: number | null;
+  displayName?: string | null;
+  defaultGenre?: string | null;
+  defaultVoiceGender?: "female" | "male" | "neutral" | null;
   createdAt?: number | null;
 }
 

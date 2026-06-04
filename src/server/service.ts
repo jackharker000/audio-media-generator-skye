@@ -307,3 +307,54 @@ export async function deleteSong(userId: string, songId: string): Promise<void> 
   await Promise.all(shares.docs.map((d) => col(COLLECTIONS.shares).doc(d.id).delete()));
   await col(COLLECTIONS.songs).doc(songId).delete();
 }
+
+// ---- Account settings & self-serve data deletion --------------------------
+
+export interface MySettings {
+  email: string | null;
+  displayName: string | null;
+  defaultGenre: string | null;
+  defaultVoiceGender: "female" | "male" | "neutral" | null;
+}
+
+export async function getMySettings(userId: string): Promise<MySettings> {
+  const snap = await col("users").doc(userId).get();
+  const d = (snap.data() ?? {}) as Record<string, unknown>;
+  return {
+    email: (d.email as string) ?? null,
+    displayName: (d.displayName as string) ?? null,
+    defaultGenre: (d.defaultGenre as string) ?? null,
+    defaultVoiceGender: (d.defaultVoiceGender as MySettings["defaultVoiceGender"]) ?? null,
+  };
+}
+
+export async function updateMySettings(
+  userId: string,
+  patch: { displayName?: string; defaultGenre?: string; defaultVoiceGender?: string },
+): Promise<void> {
+  const update: Record<string, unknown> = {};
+  if (patch.displayName !== undefined) {
+    update.displayName = String(patch.displayName).trim().slice(0, 80) || null;
+  }
+  if (patch.defaultGenre !== undefined) {
+    update.defaultGenre = String(patch.defaultGenre).trim().slice(0, 40) || null;
+  }
+  if (patch.defaultVoiceGender !== undefined) {
+    update.defaultVoiceGender = ["female", "male", "neutral"].includes(patch.defaultVoiceGender)
+      ? patch.defaultVoiceGender
+      : null;
+  }
+  if (Object.keys(update).length) await col("users").doc(userId).update(update);
+}
+
+/** Self-serve: delete all of the caller's own content (not the account doc). */
+export async function deleteMyContent(userId: string): Promise<void> {
+  const names = [COLLECTIONS.songs, COLLECTIONS.projects, COLLECTIONS.jobs, COLLECTIONS.sources];
+  const snaps = await Promise.all(names.map((n) => col(n).where("userId", "==", userId).get()));
+  const refs = snaps.flatMap((s) => s.docs.map((d) => d.ref));
+  for (let i = 0; i < refs.length; i += 400) {
+    const batch = getDb().batch();
+    refs.slice(i, i + 400).forEach((r) => batch.delete(r));
+    await batch.commit();
+  }
+}

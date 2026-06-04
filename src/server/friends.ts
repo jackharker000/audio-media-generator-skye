@@ -22,7 +22,7 @@ export interface FriendUser {
 
 function toFriendUser(u: DbUser | null): FriendUser | null {
   if (!u) return null;
-  return { id: u.id, email: u.email ?? null, name: u.name ?? null };
+  return { id: u.id, email: u.email ?? null, name: u.displayName ?? u.name ?? null };
 }
 
 async function getUser(userId: string): Promise<DbUser | null> {
