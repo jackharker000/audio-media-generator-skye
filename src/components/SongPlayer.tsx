@@ -7,6 +7,7 @@ import { KaraokeLyrics } from "./KaraokeLyrics";
 import { Quiz } from "./Quiz";
 import { Cover } from "./Cover";
 import { VisibilityControl } from "./VisibilityControl";
+import { GENRES, genreLabel } from "@/shared/constants";
 import type { SongVisibility } from "@/db/types";
 
 export interface SongView {
@@ -30,8 +31,6 @@ interface LineView {
   text: string;
   factIds: string[];
 }
-
-const GENRES = ["pop", "hip-hop", "rock", "lo-fi", "edm", "ballad", "folk", "r&b", "country"];
 
 type Tab = "play" | "lyrics" | "facts" | "quiz";
 
@@ -210,7 +209,9 @@ export function SongPlayer({
               <span className="text-sm text-slate-500">Make a variation:</span>
               <select className="input max-w-[9rem]" value={genre} onChange={(e) => setGenre(e.target.value)}>
                 {GENRES.map((g) => (
-                  <option key={g}>{g}</option>
+                  <option key={g} value={g}>
+                    {genreLabel(g)}
+                  </option>
                 ))}
               </select>
               <button className="btn-primary" disabled={busy} onClick={regenerate}>

@@ -1,4 +1,5 @@
 import { COLLECTIONS, getDb } from "@/db";
+import { byNewest, col, withId } from "@/db/helpers";
 import type {
   DbGenerationJob,
   DbProject,
@@ -14,10 +15,6 @@ import { generateQuiz } from "@/agents/quiz";
 import { getUserLimits } from "@/server/admin";
 import type { Fact, QuizQuestion } from "@/agents/schemas";
 import type { JobInputParams } from "@/shared/types";
-
-const col = (name: string) => getDb().collection(name);
-const byNewest = <T extends { createdAt: number }>(a: T, b: T) => b.createdAt - a.createdAt;
-const withId = <T>(d: { id: string; data: () => any }): T => ({ id: d.id, ...d.data() }) as T;
 
 // ---- Projects -------------------------------------------------------------
 

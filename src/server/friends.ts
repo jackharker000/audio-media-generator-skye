@@ -1,4 +1,5 @@
-import { COLLECTIONS, getDb } from "@/db";
+import { COLLECTIONS } from "@/db";
+import { byNewest, col, withId } from "@/db/helpers";
 import type { DbFriendship, DbSong, DbUser, SongVisibility } from "@/db/types";
 import { createNotification } from "./notifications";
 
@@ -11,10 +12,6 @@ const displayNameOf = (u: DbUser | null) => u?.displayName ?? u?.name ?? u?.emai
  * Firestore note: we deliberately keep every query to a single `where(...)`
  * filter and merge/sort in JS, so no composite indexes are required.
  */
-
-const col = (name: string) => getDb().collection(name);
-const byNewest = <T extends { createdAt: number }>(a: T, b: T) => b.createdAt - a.createdAt;
-const withId = <T>(d: { id: string; data: () => any }): T => ({ id: d.id, ...d.data() }) as T;
 
 /** Trimmed-down user info safe to hand to clients. */
 export interface FriendUser {
@@ -159,6 +156,18 @@ export async function listIncoming(userId: string): Promise<PendingRequest[]> {
     if (user) out.push({ id: f.id, user, createdAt: f.createdAt });
   }
   return out;
+}
+
+/**
+ * Count of pending incoming requests, for the nav badge. Keeps to a single
+ * `where(...)` filter (no composite index) and skips loading each requester's
+ * user record — the badge only needs a number, whereas `listIncoming` fans out
+ * to fetch every requester's profile.
+ */
+export async function countIncoming(userId: string): Promise<number> {
+  if (!userId) return 0;
+  const snap = await col(COLLECTIONS.friendships).where("addresseeId", "==", userId).get();
+  return snap.docs.reduce((n, d) => (d.data().status === "pending" ? n + 1 : n), 0);
 }
 
 /** Requests sent BY this user awaiting the other party's response. */

@@ -1,4 +1,5 @@
 import { COLLECTIONS, getDb } from "@/db";
+import { byNewest, withId } from "@/db/helpers";
 import type { DbNotification } from "@/db/types";
 
 /**
@@ -28,9 +29,7 @@ export async function getNotifications(
   limit = 30,
 ): Promise<{ items: DbNotification[]; unread: number }> {
   const snap = await col().where("userId", "==", userId).get();
-  const all = snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }) as DbNotification)
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const all = snap.docs.map((d) => withId<DbNotification>(d)).sort(byNewest);
   return { items: all.slice(0, limit), unread: all.filter((n) => !n.read).length };
 }
 

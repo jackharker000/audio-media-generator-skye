@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { GENRES, genreLabel } from "@/shared/constants";
 
 interface Settings {
   email: string | null;
@@ -9,8 +10,6 @@ interface Settings {
   defaultGenre: string | null;
   defaultVoiceGender: "female" | "male" | "neutral" | null;
 }
-
-const GENRES = ["pop", "hip-hop", "rock", "lo-fi", "edm", "ballad", "folk", "r&b", "country"];
 
 export function SettingsClient({ initial }: { initial: Settings }) {
   const router = useRouter();
@@ -75,7 +74,9 @@ export function SettingsClient({ initial }: { initial: Settings }) {
             <select className="input" value={defaultGenre} onChange={(e) => setDefaultGenre(e.target.value)}>
               <option value="">No preference</option>
               {GENRES.map((g) => (
-                <option key={g}>{g}</option>
+                <option key={g} value={g}>
+                  {genreLabel(g)}
+                </option>
               ))}
             </select>
           </div>

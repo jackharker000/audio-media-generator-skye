@@ -10,7 +10,6 @@ import type {
   SongPlan,
   StageName,
   StageState,
-  StageStates,
 } from "@/shared/types";
 
 export interface JobBundle {
@@ -42,16 +41,21 @@ export async function setStage(
   stage: StageName,
   patch: Partial<StageState>,
 ): Promise<void> {
-  const ref = jobs().doc(jobId);
-  const snap = await ref.get();
-  const states = { ...((snap.data()?.stageStates ?? {}) as StageStates) };
-  const prev = states[stage] ?? { status: "pending" as const };
-  states[stage] = {
-    ...prev,
-    ...patch,
-    attempts: (prev.attempts ?? 0) + (patch.status === "running" ? 1 : 0),
+  // Targeted field-path update of just this one stage (no read-modify-write of
+  // the whole map): safe when a stale-job re-drive briefly runs two pipeline
+  // instances, since concurrent writers touch different stage subkeys. Attempts
+  // are bumped atomically only when the stage (re)enters "running".
+  const update: Record<string, unknown> = {
+    currentStage: stage,
+    updatedAt: Date.now(),
   };
-  await ref.update({ stageStates: states, currentStage: stage, updatedAt: Date.now() });
+  for (const [k, v] of Object.entries(patch)) {
+    update[`stageStates.${stage}.${k}`] = v;
+  }
+  if (patch.status === "running") {
+    update[`stageStates.${stage}.attempts`] = FieldValue.increment(1);
+  }
+  await jobs().doc(jobId).update(update);
 }
 
 export async function setKnowledgeMapId(jobId: string, kmId: string): Promise<void> {

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProgressTracker } from "./ProgressTracker";
+import { GENRES, genreLabel } from "@/shared/constants";
 
 interface SourceView {
   id: string;
@@ -16,8 +17,6 @@ interface SongRef {
   title: string;
   createdAt: string;
 }
-
-const GENRES = ["pop", "hip-hop", "rock", "lo-fi", "edm", "ballad", "folk", "r&b", "country"];
 
 export function NotebookClient({
   projectId,
@@ -207,7 +206,9 @@ export function NotebookClient({
                   <label className="label">Genre</label>
                   <select className="input" value={genre} onChange={(e) => setGenre(e.target.value)}>
                     {GENRES.map((g) => (
-                      <option key={g}>{g}</option>
+                      <option key={g} value={g}>
+                        {genreLabel(g)}
+                      </option>
                     ))}
                   </select>
                 </div>

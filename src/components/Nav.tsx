@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth, isAdmin, signOut } from "@/auth/auth";
-import { listIncoming } from "@/server/friends";
+import { countIncoming } from "@/server/friends";
 import { AccountMenu } from "./AccountMenu";
 import { NotificationsBell } from "./NotificationsBell";
 
@@ -10,11 +10,7 @@ export async function Nav() {
     | { id?: string; email?: string | null; name?: string | null }
     | undefined;
   const admin = user ? await isAdmin().catch(() => false) : false;
-  const pendingRequests = user
-    ? await listIncoming(user.id ?? "")
-        .then((l) => l.length)
-        .catch(() => 0)
-    : 0;
+  const pendingRequests = user ? await countIncoming(user.id ?? "").catch(() => 0) : 0;
 
   async function doSignOut() {
     "use server";

@@ -1,4 +1,5 @@
 import { COLLECTIONS, getDb } from "@/db";
+import { col } from "@/db/helpers";
 import type { DbUser } from "@/db/types";
 import { isAdmin } from "@/auth/auth";
 
@@ -7,8 +8,6 @@ import { isAdmin } from "@/auth/auth";
  * management. Every exported function except `assertAdmin` and `getUserLimits`
  * gates on `await assertAdmin()` so a non-admin can never reach the data layer.
  */
-
-const col = (name: string) => getDb().collection(name);
 
 /** YYYY-MM-DD in UTC — matches the `windowDate` on usage docs. */
 function todayUtc(): string {
