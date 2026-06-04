@@ -14,7 +14,7 @@ repeating chorus.
 |---|---|
 | Lyrics + all reasoning | **Google Gemini** (`@google/genai`, 2.5 Flash / Flash-Lite) |
 | Database | **Cloud Firestore** (Firebase) |
-| File + audio storage | **Cloud Storage** (Firebase) |
+| File + audio storage | **Firestore** by default (no bucket needed); optional Cloud Storage |
 | The "music" | **Google Cloud Text-to-Speech** |
 | Sign-in | **Google OAuth** (Auth.js) |
 | Hosting | **Vercel** |
@@ -65,11 +65,13 @@ audio is written to `.data/` and served locally.
 
 1. **Gemini API key** — https://aistudio.google.com/apikey → `GEMINI_API_KEY`.
 2. **A Firebase project** (free Spark plan):
-   - Enable **Firestore** and **Storage**.
+   - Enable **Firestore**. (Cloud Storage is **optional** — by default audio is
+     stored in Firestore, so you don't need a bucket or the Blaze plan.)
    - Enable the **Cloud Text-to-Speech API** in the Google Cloud console.
    - Create a **service account key** (JSON).
    - Put the JSON inline in `FIREBASE_SERVICE_ACCOUNT_JSON` (one line) or point
-     `GOOGLE_APPLICATION_CREDENTIALS` at the file. Set `FIREBASE_STORAGE_BUCKET`.
+     `GOOGLE_APPLICATION_CREDENTIALS` at the file. (Set `FIREBASE_STORAGE_BUCKET`
+     only if you'd rather use Cloud Storage than Firestore for audio.)
 3. (Production) **Google OAuth** client → `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`,
    and `AUTH_SECRET` (`npx auth secret`).
 
@@ -82,7 +84,8 @@ See [`.env.example`](./.env.example) for the full list.
    - `GEMINI_API_KEY`
    - `FIREBASE_SERVICE_ACCOUNT_JSON` — paste the **entire** service-account JSON
      as a single value (Vercel handles the newlines).
-   - `FIREBASE_STORAGE_BUCKET`, and optionally `FIREBASE_PROJECT_ID`
+   - `FIREBASE_STORAGE_BUCKET` — **optional** (omit to store audio in Firestore);
+     optionally `FIREBASE_PROJECT_ID`
    - `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
    - `APP_URL` / `NEXT_PUBLIC_APP_URL` / `AUTH_URL` = your deployment URL
    - `MUSIC_PROVIDER=google-tts-beat`

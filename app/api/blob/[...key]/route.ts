@@ -1,13 +1,13 @@
-import { getContentType, getObjectBuffer, usingCloud } from "@/storage";
+import { getContentType, getObjectBuffer, storageBackend } from "@/storage";
 
 export const runtime = "nodejs";
 
-/** Serves objects from the local-filesystem storage backend (dev / $0 mode). */
+/** Serves objects from the Firestore / local storage backends (dev & no-bucket modes). */
 export async function GET(
   _req: Request,
   ctx: { params: Promise<{ key: string[] }> },
 ) {
-  if (usingCloud()) {
+  if (storageBackend() === "gcs") {
     return new Response("Use signed Cloud Storage URLs in production", { status: 404 });
   }
   const { key } = await ctx.params;

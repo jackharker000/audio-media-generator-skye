@@ -1,11 +1,11 @@
 import { COLLECTIONS, getDb } from "@/db";
 import type { DbSong } from "@/db/types";
 import { currentUserId } from "@/auth/auth";
-import { getReadUrl } from "@/storage";
+import { getContentType, getObjectBuffer, getReadUrl, storageBackend } from "@/storage";
 
 export const runtime = "nodejs";
 
-/** Resolves a song's audio to a streamable URL (signed GCS / local). */
+/** Resolves/serves a song's audio (signed GCS URL, or streamed from Firestore/local). */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const snap = await getDb().collection(COLLECTIONS.songs).doc(id).get();
@@ -20,7 +20,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const download = new URL(req.url).searchParams.get("download") === "1";
-  const url = await getReadUrl(song.audioStorageKey, { download });
-  const dest = url.startsWith("http") ? url : new URL(url, req.url).toString();
-  return Response.redirect(dest, 302);
+
+  // GCS: redirect to a short-lived signed URL.
+  if (storageBackend() === "gcs") {
+    const url = await getReadUrl(song.audioStorageKey, { download });
+    return Response.redirect(url, 302);
+  }
+
+  // Firestore / local: stream the bytes directly (keeps the auth check intact).
+  const buf = await getObjectBuffer(song.audioStorageKey);
+  const contentType = (await getContentType(song.audioStorageKey)) ?? "audio/mpeg";
+  const headers: Record<string, string> = {
+    "Content-Type": contentType,
+    "Content-Length": String(buf.length),
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, max-age=3600",
+  };
+  if (download) {
+    headers["Content-Disposition"] = `attachment; filename="${song.title.replace(/[^a-z0-9]+/gi, "_")}.mp3"`;
+  }
+  return new Response(new Uint8Array(buf), { headers });
 }

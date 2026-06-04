@@ -1,15 +1,29 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { features } from "@/lib/env";
+import { features, optionalEnv } from "@/lib/env";
+import { blobExists, getBlob, getBlobContentType, putBlob } from "./firestoreBlob";
 
 /**
- * Object storage abstraction. Uses Google Cloud Storage (Firebase Storage
- * bucket) when configured; otherwise falls back to the local filesystem (under
- * .data/blob) so the app can run with no cloud storage — handy for local dev.
+ * Object storage abstraction with three backends, chosen automatically:
+ *   - "gcs":       Google Cloud Storage (Firebase) — when a bucket is set.
+ *   - "firestore": store blobs in Firestore — when a service account is set but
+ *                  no bucket (no Cloud Storage / Blaze plan needed).
+ *   - "local":     local filesystem (.data/blob) — for dev with no Google creds.
+ * Override with STORAGE_BACKEND=gcs|firestore|local.
  */
+export type StorageBackend = "gcs" | "firestore" | "local";
 
+export function storageBackend(): StorageBackend {
+  const override = optionalEnv("STORAGE_BACKEND");
+  if (override === "gcs" || override === "firestore" || override === "local") return override;
+  if (features.hasCloudStorage()) return "gcs";
+  if (features.hasFirebase()) return "firestore";
+  return "local";
+}
+
+/** GCS issues its own signed URLs; the other backends are served via /api/blob. */
 export function usingCloud(): boolean {
-  return features.hasCloudStorage();
+  return storageBackend() === "gcs";
 }
 
 const LOCAL_DIR = path.join(process.cwd(), ".data", "blob");
@@ -28,9 +42,14 @@ export async function putObject(
   body: Buffer | Uint8Array | string,
   contentType?: string,
 ): Promise<void> {
-  if (usingCloud()) {
+  const backend = storageBackend();
+  if (backend === "gcs") {
     const b = await bucket();
     await b.file(key).save(toBuffer(body), { contentType, resumable: false });
+    return;
+  }
+  if (backend === "firestore") {
+    await putBlob(key, toBuffer(body), contentType);
     return;
   }
   const file = path.join(LOCAL_DIR, key);
@@ -40,26 +59,32 @@ export async function putObject(
 }
 
 export async function getObjectBuffer(key: string): Promise<Buffer> {
-  if (usingCloud()) {
+  const backend = storageBackend();
+  if (backend === "gcs") {
     const b = await bucket();
     const [buf] = await b.file(key).download();
     return buf;
   }
+  if (backend === "firestore") return getBlob(key);
   return fs.readFile(path.join(LOCAL_DIR, key));
 }
 
 export async function getContentType(key: string): Promise<string | undefined> {
-  if (usingCloud()) return undefined;
+  const backend = storageBackend();
+  if (backend === "gcs") return undefined;
+  if (backend === "firestore") return getBlobContentType(key);
   return fs.readFile(`${path.join(LOCAL_DIR, key)}.meta`, "utf8").catch(() => undefined);
 }
 
 export async function objectExists(key: string): Promise<boolean> {
   try {
-    if (usingCloud()) {
+    const backend = storageBackend();
+    if (backend === "gcs") {
       const b = await bucket();
       const [exists] = await b.file(key).exists();
       return exists;
     }
+    if (backend === "firestore") return blobExists(key);
     await fs.access(path.join(LOCAL_DIR, key));
     return true;
   } catch {
@@ -72,7 +97,7 @@ export async function getReadUrl(
   key: string,
   opts: { expiresIn?: number; download?: boolean } = {},
 ): Promise<string> {
-  if (usingCloud()) {
+  if (storageBackend() === "gcs") {
     const b = await bucket();
     const [url] = await b.file(key).getSignedUrl({
       action: "read",
@@ -81,6 +106,7 @@ export async function getReadUrl(
     });
     return url;
   }
+  // Firestore / local: served (auth-checked) through our own routes.
   return `/api/blob/${key.split("/").map(encodeURIComponent).join("/")}`;
 }
 
