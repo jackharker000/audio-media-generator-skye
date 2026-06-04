@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProgressTracker } from "./ProgressTracker";
+import { KaraokeLyrics } from "./KaraokeLyrics";
+import { Quiz } from "./Quiz";
+import { Cover } from "./Cover";
 
 export interface SongView {
   id: string;
@@ -12,39 +15,49 @@ export interface SongView {
   genre?: string;
   isPublic?: boolean;
   version?: number;
+  projectId?: string;
+}
+interface FactView {
+  factId: string;
+  claim: string;
+  importance: number;
+}
+interface LineView {
+  section: string;
+  text: string;
+  factIds: string[];
 }
 
 const GENRES = ["pop", "hip-hop", "rock", "lo-fi", "edm", "ballad", "folk", "r&b", "country"];
 
-function Lyrics({ text }: { text: string }) {
-  return (
-    <div className="whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-sm leading-7">
-      {text.split("\n").map((line, i) => {
-        const tag = line.trim().match(/^\[([^\]]+)\]$/);
-        if (tag) {
-          return (
-            <div key={i} className="mt-3 text-xs font-semibold uppercase tracking-wide text-brand-600">
-              {tag[1]}
-            </div>
-          );
-        }
-        return <div key={i}>{line || " "}</div>;
-      })}
-    </div>
-  );
-}
+type Tab = "play" | "lyrics" | "facts" | "quiz";
 
-export function SongPlayer({ song, canEdit }: { song: SongView; canEdit: boolean }) {
+export function SongPlayer({
+  song,
+  facts = [],
+  lines = [],
+  canEdit,
+}: {
+  song: SongView;
+  facts?: FactView[];
+  lines?: LineView[];
+  canEdit: boolean;
+}) {
   const router = useRouter();
+  const [tab, setTab] = useState<Tab>("play");
+  const [progress, setProgress] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [lyrics, setLyrics] = useState(song.lyrics);
   const [genre, setGenre] = useState(song.genre ?? "pop");
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function post(url: string, body?: unknown) {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -54,118 +67,232 @@ export function SongPlayer({ song, canEdit }: { song: SongView; canEdit: boolean
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
       return data;
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
     } finally {
       setBusy(false);
     }
   }
 
   async function regenerate() {
-    const { jobId } = await post(`/api/songs/${song.id}/regenerate`, { genre });
-    setJobId(jobId);
+    try {
+      const { jobId } = await post(`/api/songs/${song.id}/regenerate`, { genre });
+      setJobId(jobId);
+    } catch {
+      /* error shown */
+    }
   }
   async function saveEdit() {
-    const { jobId } = await post(`/api/songs/${song.id}/edit`, { lyrics, genre });
-    setEditing(false);
-    setJobId(jobId);
+    try {
+      const { jobId } = await post(`/api/songs/${song.id}/edit`, { lyrics, genre });
+      setEditing(false);
+      setJobId(jobId);
+    } catch {
+      /* error shown */
+    }
   }
   async function share() {
-    const { url } = await post(`/api/songs/${song.id}/share`, { visibility: "public" });
-    setShareUrl(url);
-    navigator.clipboard?.writeText(url).catch(() => {});
+    try {
+      const { url } = await post(`/api/songs/${song.id}/share`, { visibility: "public" });
+      setShareUrl(url);
+      navigator.clipboard?.writeText(url).catch(() => {});
+    } catch {
+      /* error shown */
+    }
+  }
+  async function remove() {
+    if (!confirm("Delete this song permanently?")) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/songs/${song.id}`, { method: "DELETE" });
+      router.push(song.projectId ? `/projects/${song.projectId}` : "/library");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (jobId) {
     return (
-      <ProgressTracker
-        jobId={jobId}
-        onComplete={(newSongId) => router.push(`/songs/${newSongId}`)}
-      />
+      <ProgressTracker jobId={jobId} onComplete={(newId) => router.push(`/songs/${newId}`)} />
     );
   }
 
+  const claimFor = (id: string) => facts.find((f) => f.factId === id)?.claim;
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "play", label: "▶ Play" },
+    { id: "lyrics", label: "Lyrics" },
+    ...(facts.length ? [{ id: "facts" as Tab, label: "Facts" }] : []),
+    ...(canEdit ? [{ id: "quiz" as Tab, label: "Quiz" }] : []),
+  ];
+
   return (
     <div className="space-y-5">
-      <div className="card">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">{song.title}</h1>
-            {song.description && <p className="mt-1 text-sm text-slate-600">{song.description}</p>}
+      {/* Header */}
+      <div className="card flex flex-col gap-4 sm:flex-row sm:items-center">
+        <Cover seed={song.id} title={song.title} className="h-20 w-20 shrink-0 rounded-xl" />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-2xl font-bold">{song.title}</h1>
+          {song.description && <p className="mt-1 text-sm text-slate-600">{song.description}</p>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a className="btn-ghost" href={`/api/songs/${song.id}/audio?download=1`}>
+              ⬇ Download
+            </a>
+            {canEdit && (
+              <>
+                <button className="btn-ghost" disabled={busy} onClick={share}>
+                  🔗 Share
+                </button>
+                <button className="btn-ghost text-red-600" disabled={busy} onClick={remove}>
+                  🗑 Delete
+                </button>
+              </>
+            )}
             {song.version && song.version > 1 && (
-              <span className="mt-2 inline-block rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+              <span className="self-center rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
                 v{song.version}
               </span>
             )}
           </div>
-        </div>
-
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <audio controls className="mt-4 w-full" src={`/api/songs/${song.id}/audio`} />
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <a className="btn-ghost" href={`/api/songs/${song.id}/audio?download=1`}>
-            ⬇ Download
-          </a>
-          {canEdit && (
-            <>
-              <button className="btn-ghost" disabled={busy} onClick={share}>
-                🔗 Share
-              </button>
-              <button className="btn-ghost" disabled={busy} onClick={() => setEditing((v) => !v)}>
-                ✎ Edit lyrics
-              </button>
-            </>
+          {shareUrl && (
+            <p className="mt-2 break-all text-xs text-green-700">Public link copied: {shareUrl}</p>
           )}
         </div>
-
-        {shareUrl && (
-          <p className="mt-3 break-all rounded-lg bg-green-50 p-3 text-sm text-green-700">
-            Public link (copied): <a className="underline" href={shareUrl}>{shareUrl}</a>
-          </p>
-        )}
       </div>
 
-      {canEdit && (
-        <div className="card">
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <h3 className="font-semibold">Remix</h3>
-            <select className="input max-w-[10rem]" value={genre} onChange={(e) => setGenre(e.target.value)}>
-              {GENRES.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-            <button className="btn-primary" disabled={busy} onClick={regenerate}>
-              ↻ Regenerate ({genre})
-            </button>
-          </div>
-          <p className="text-xs text-slate-500">
-            Regenerate reuses the extracted facts and just re-sings them — fast and cheap.
-          </p>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-2 text-sm font-medium ${
+              tab === t.id
+                ? "border-b-2 border-brand-600 text-brand-700"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+
+      {tab === "play" && (
+        <div className="card space-y-4">
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <audio
+            controls
+            className="w-full"
+            src={`/api/songs/${song.id}/audio`}
+            onTimeUpdate={(e) => {
+              const el = e.currentTarget;
+              if (el.duration) setProgress(el.currentTime / el.duration);
+            }}
+          />
+          <KaraokeLyrics lyrics={song.lyrics} progress={progress} />
+          {canEdit && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              <span className="text-sm text-slate-500">Make a variation:</span>
+              <select className="input max-w-[9rem]" value={genre} onChange={(e) => setGenre(e.target.value)}>
+                {GENRES.map((g) => (
+                  <option key={g}>{g}</option>
+                ))}
+              </select>
+              <button className="btn-primary" disabled={busy} onClick={regenerate}>
+                ↻ Regenerate
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {editing ? (
+      {tab === "lyrics" && (
         <div className="card">
-          <label className="label">Edit the lyrics, then re-sing</label>
-          <textarea
-            className="input min-h-[16rem] font-mono text-sm"
-            value={lyrics}
-            onChange={(e) => setLyrics(e.target.value)}
-          />
-          <div className="mt-3 flex gap-2">
-            <button className="btn-primary" disabled={busy} onClick={saveEdit}>
-              Save &amp; re-sing
-            </button>
-            <button className="btn-ghost" onClick={() => setEditing(false)}>
-              Cancel
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-semibold">Lyrics</h3>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                navigator.clipboard?.writeText(song.lyrics);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? "Copied!" : "Copy"}
             </button>
           </div>
+          {editing && canEdit ? (
+            <>
+              <textarea
+                className="input min-h-[18rem] font-mono"
+                value={lyrics}
+                onChange={(e) => setLyrics(e.target.value)}
+              />
+              <div className="mt-3 flex gap-2">
+                <button className="btn-primary" disabled={busy} onClick={saveEdit}>
+                  Save &amp; re-sing
+                </button>
+                <button className="btn-ghost" onClick={() => setEditing(false)}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-4 font-sans text-sm leading-7">
+                {song.lyrics}
+              </pre>
+              {canEdit && (
+                <button className="btn-ghost mt-3" onClick={() => setEditing(true)}>
+                  ✎ Edit lyrics
+                </button>
+              )}
+            </>
+          )}
         </div>
-      ) : (
+      )}
+
+      {tab === "facts" && (
+        <div className="card space-y-5">
+          <div>
+            <h3 className="mb-2 font-semibold">Key facts to remember</h3>
+            <ol className="space-y-1.5 text-sm">
+              {[...facts]
+                .sort((a, b) => b.importance - a.importance)
+                .map((f) => (
+                  <li key={f.factId} className="flex gap-2">
+                    <span className="text-brand-500">{"★".repeat(Math.max(1, Math.min(5, f.importance)))}</span>
+                    <span>{f.claim}</span>
+                  </li>
+                ))}
+            </ol>
+          </div>
+          {lines.some((l) => l.factIds.length) && (
+            <div>
+              <h3 className="mb-2 font-semibold">Which line teaches what</h3>
+              <ul className="space-y-2 text-sm">
+                {lines
+                  .filter((l) => l.factIds.length)
+                  .map((l, i) => (
+                    <li key={i} className="rounded-lg bg-slate-50 p-2">
+                      <div className="font-medium">“{l.text}”</div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {l.factIds.map((id) => claimFor(id)).filter(Boolean).join(" · ")}
+                      </div>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "quiz" && canEdit && (
         <div className="card">
-          <h3 className="mb-2 font-semibold">Lyrics</h3>
-          <Lyrics text={song.lyrics} />
+          <Quiz songId={song.id} />
         </div>
       )}
     </div>

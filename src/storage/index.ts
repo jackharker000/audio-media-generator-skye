@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { features, optionalEnv } from "@/lib/env";
-import { blobExists, getBlob, getBlobContentType, putBlob } from "./firestoreBlob";
+import { blobExists, deleteBlob, getBlob, getBlobContentType, putBlob } from "./firestoreBlob";
 
 /**
  * Object storage abstraction with three backends, chosen automatically:
@@ -108,6 +108,26 @@ export async function getReadUrl(
   }
   // Firestore / local: served (auth-checked) through our own routes.
   return `/api/blob/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+/** Best-effort delete of an object across whichever backend is active. */
+export async function deleteObject(key: string): Promise<void> {
+  try {
+    const backend = storageBackend();
+    if (backend === "gcs") {
+      const b = await bucket();
+      await b.file(key).delete({ ignoreNotFound: true } as any);
+      return;
+    }
+    if (backend === "firestore") {
+      await deleteBlob(key);
+      return;
+    }
+    await fs.unlink(path.join(LOCAL_DIR, key)).catch(() => {});
+    await fs.unlink(`${path.join(LOCAL_DIR, key)}.meta`).catch(() => {});
+  } catch {
+    /* best effort */
+  }
 }
 
 /** Download an external URL into our storage (kept for completeness). */

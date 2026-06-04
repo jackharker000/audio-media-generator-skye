@@ -6,10 +6,12 @@ import type {
   DbSong,
   DbSourceDocument,
 } from "@/db/types";
-import { putObject } from "@/storage";
+import { deleteObject, putObject } from "@/storage";
 import { env } from "@/lib/env";
 import { songsToday } from "@/pipeline/jobStore";
 import { slugify } from "@/lib/utils";
+import { generateQuiz } from "@/agents/quiz";
+import type { Fact, QuizQuestion } from "@/agents/schemas";
 import type { JobInputParams } from "@/shared/types";
 
 const col = (name: string) => getDb().collection(name);
@@ -262,4 +264,39 @@ export async function getShareBySlug(
   const songSnap = await col(COLLECTIONS.songs).doc(share.songId).get();
   if (!songSnap.exists) return null;
   return { share, song: withId<DbSong>(songSnap) };
+}
+
+// ---- Study features (facts, quiz, deletion) -------------------------------
+
+async function factsForSong(song: DbSong): Promise<Fact[]> {
+  if (!song.knowledgeMapId) return [];
+  const snap = await col(COLLECTIONS.knowledgeMaps).doc(song.knowledgeMapId).get();
+  return (snap.data()?.facts as Fact[]) ?? [];
+}
+
+export async function getSongView(userId: string, songId: string) {
+  const song = await getSong(userId, songId);
+  if (!song) return null;
+  return { song, facts: await factsForSong(song), lines: song.lineFactMap ?? [] };
+}
+
+export async function getOrCreateQuiz(userId: string, songId: string): Promise<QuizQuestion[]> {
+  const song = await getSong(userId, songId);
+  if (!song) throw new Error("Song not found");
+  if (song.quiz && song.quiz.length) return song.quiz;
+  const facts = await factsForSong(song);
+  if (!facts.length) throw new Error("No source facts available to build a quiz.");
+  const count = Math.min(8, Math.max(4, Math.ceil(facts.length / 2)));
+  const quiz = await generateQuiz(facts, count);
+  await col(COLLECTIONS.songs).doc(songId).update({ quiz: quiz.questions, updatedAt: Date.now() });
+  return quiz.questions;
+}
+
+export async function deleteSong(userId: string, songId: string): Promise<void> {
+  const song = await getSong(userId, songId);
+  if (!song) throw new Error("Song not found");
+  if (song.audioStorageKey) await deleteObject(song.audioStorageKey);
+  const shares = await col(COLLECTIONS.shares).where("songId", "==", songId).get();
+  await Promise.all(shares.docs.map((d) => col(COLLECTIONS.shares).doc(d.id).delete()));
+  await col(COLLECTIONS.songs).doc(songId).delete();
 }

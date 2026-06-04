@@ -55,3 +55,10 @@ export async function getBlobContentType(key: string): Promise<string | undefine
 export async function blobExists(key: string): Promise<boolean> {
   return (await blobDoc(key).get()).exists;
 }
+
+export async function deleteBlob(key: string): Promise<void> {
+  const ref = blobDoc(key);
+  const chunks = await ref.collection("chunks").listDocuments();
+  await mapWithConcurrency(chunks, 10, (d) => d.delete());
+  await ref.delete().catch(() => {});
+}

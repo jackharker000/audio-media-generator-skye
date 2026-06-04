@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { features } from "@/lib/env";
 import { requireUserPage } from "@/server/pageAuth";
-import { getSong } from "@/server/service";
+import { getSongView } from "@/server/service";
 import { SongPlayer } from "@/components/SongPlayer";
 import { SetupNotice } from "@/components/SetupNotice";
 
@@ -12,8 +12,9 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
   if (!features.hasDb()) return <SetupNotice />;
   const userId = await requireUserPage();
   const { id } = await params;
-  const song = await getSong(userId, id);
-  if (!song) notFound();
+  const view = await getSongView(userId, id);
+  if (!view) notFound();
+  const { song, facts, lines } = view;
 
   return (
     <div className="space-y-4">
@@ -22,6 +23,12 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
       </Link>
       <SongPlayer
         canEdit
+        facts={facts.map((f) => ({ factId: f.factId, claim: f.claim, importance: f.importance }))}
+        lines={(lines ?? []).map((l) => ({
+          section: l.section,
+          text: l.text,
+          factIds: l.factIds ?? [],
+        }))}
         song={{
           id: song.id,
           title: song.title,
@@ -30,6 +37,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
           genre: song.params.genre,
           isPublic: song.isPublic,
           version: song.version,
+          projectId: song.projectId,
         }}
       />
     </div>

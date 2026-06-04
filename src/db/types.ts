@@ -1,4 +1,4 @@
-import type { Fact, LyricLine } from "@/agents/schemas";
+import type { Fact, LyricLine, QuizQuestion } from "@/agents/schemas";
 import type {
   JobInputParams,
   JobStatus,
@@ -83,6 +83,7 @@ export interface DbSong {
   rootSongId?: string | null;
   version: number;
   isPublic: boolean;
+  quiz?: QuizQuestion[] | null;
   createdAt: number;
   updatedAt: number;
 }

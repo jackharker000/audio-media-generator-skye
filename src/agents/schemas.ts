@@ -165,3 +165,18 @@ export const SongMetaSchema = z.object({
   description: z.string(),
 });
 export type SongMeta = z.infer<typeof SongMetaSchema>;
+
+// ---- Quiz (active recall testing) -----------------------------------------
+
+export const QuizQuestionSchema = z.object({
+  question: z.string(),
+  options: z.array(z.string()).min(2).max(5),
+  answerIndex: z.number().int().min(0),
+  explanation: z.string().optional(),
+});
+export type QuizQuestion = z.infer<typeof QuizQuestionSchema>;
+
+export const QuizSchema = z.object({
+  questions: z.array(QuizQuestionSchema).min(1).max(15),
+});
+export type Quiz = z.infer<typeof QuizSchema>;

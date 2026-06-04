@@ -258,3 +258,18 @@ GENRE: ${plan.genre}; HOOK: ${plan.hookConcept}
 FIRST LINES: ${draft.taggedLyrics.slice(0, 400)}`,
   };
 }
+
+// ---- Quiz (active recall) -------------------------------------------------
+
+export function quizPrompt(facts: Fact[], count = 6): Prompt {
+  return {
+    system:
+      "You write fair multiple-choice recall questions that test whether someone memorized a set of facts. Each question has exactly 4 options with one correct answer; distractors are plausible but wrong to someone who learned the material.",
+    prompt: `From these facts, write ${count} multiple-choice questions (exactly 4 options each) that test recall. Base questions ONLY on the facts. Mark the correct option with answerIndex (0-based). Add a one-line explanation referencing the fact.
+
+Return JSON: {"questions":[{"question":"...","options":["a","b","c","d"],"answerIndex":0,"explanation":"..."}]}
+
+FACTS:
+${factsJson(facts)}`,
+  };
+}

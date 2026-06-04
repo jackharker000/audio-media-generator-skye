@@ -3,6 +3,7 @@ import { features } from "@/lib/env";
 import { requireUserPage } from "@/server/pageAuth";
 import { getProjectDetail } from "@/server/service";
 import { NotebookClient } from "@/components/NotebookClient";
+import { ProjectActions } from "@/components/ProjectActions";
 import { SetupNotice } from "@/components/SetupNotice";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +22,14 @@ export default async function NotebookPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{detail.project.title}</h1>
-        {detail.project.description && (
-          <p className="text-sm text-slate-600">{detail.project.description}</p>
-        )}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">{detail.project.title}</h1>
+          {detail.project.description && (
+            <p className="text-sm text-slate-600">{detail.project.description}</p>
+          )}
+        </div>
+        <ProjectActions projectId={id} />
       </div>
       <NotebookClient
         projectId={id}
