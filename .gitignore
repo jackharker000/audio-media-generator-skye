@@ -35,5 +35,8 @@ yarn-error.log*
 /.vscode
 *.log
 
+# agent worktrees (temporary, created by background agents)
+/.claude/worktrees/
+
 # generated audio scratch (canonical copies live in R2)
 /scratch
