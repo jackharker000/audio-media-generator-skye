@@ -101,6 +101,18 @@ export interface DbFriendship {
   updatedAt: number;
 }
 
+export interface DbNotification {
+  id: string;
+  userId: string; // recipient
+  type: "friend_request" | "friend_accepted" | "friend_song";
+  actorId?: string | null;
+  actorName?: string | null;
+  songId?: string | null;
+  message: string;
+  read: boolean;
+  createdAt: number;
+}
+
 /** Auth.js-managed user doc (collection "users"), with fields we read. */
 export interface DbUser {
   id: string;

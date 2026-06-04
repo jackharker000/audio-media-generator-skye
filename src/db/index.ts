@@ -17,6 +17,7 @@ export const COLLECTIONS = {
   usage: "usageCounters",
   blobs: "blobs",
   friendships: "friendships",
+  notifications: "notifications",
 } as const;
 
 export * from "./types";

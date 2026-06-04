@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth, isAdmin, signOut } from "@/auth/auth";
 import { listIncoming } from "@/server/friends";
 import { AccountMenu } from "./AccountMenu";
+import { NotificationsBell } from "./NotificationsBell";
 
 export async function Nav() {
   const session = await auth().catch(() => null);
@@ -45,6 +46,7 @@ export async function Nav() {
                   </span>
                 )}
               </Link>
+              <NotificationsBell />
               <AccountMenu
                 email={user.email}
                 name={user.name}

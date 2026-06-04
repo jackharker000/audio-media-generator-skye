@@ -1,5 +1,8 @@
 import { COLLECTIONS, getDb } from "@/db";
 import type { DbFriendship, DbSong, DbUser, SongVisibility } from "@/db/types";
+import { createNotification } from "./notifications";
+
+const displayNameOf = (u: DbUser | null) => u?.displayName ?? u?.name ?? u?.email ?? "Someone";
 
 /**
  * Friends / social: friend requests, accepted friendships, the shared-song feed,
@@ -79,6 +82,14 @@ export async function sendRequest(fromId: string, toEmail: string): Promise<{ cr
     createdAt: now,
     updatedAt: now,
   });
+  const actorName = displayNameOf(await getUser(fromId));
+  await createNotification({
+    userId: found.id,
+    type: "friend_request",
+    actorId: fromId,
+    actorName,
+    message: `${actorName} sent you a friend request`,
+  });
   return { created: true };
 }
 
@@ -97,6 +108,14 @@ export async function respondRequest(
     await col(COLLECTIONS.friendships)
       .doc(friendshipId)
       .update({ status: "accepted", updatedAt: Date.now() });
+    const actorName = displayNameOf(await getUser(userId));
+    await createNotification({
+      userId: f.requesterId,
+      type: "friend_accepted",
+      actorId: userId,
+      actorName,
+      message: `${actorName} accepted your friend request`,
+    });
   } else {
     await col(COLLECTIONS.friendships).doc(friendshipId).delete();
   }

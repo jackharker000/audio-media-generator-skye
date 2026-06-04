@@ -1,6 +1,8 @@
 import { COLLECTIONS, getDb } from "@/db";
 import { requireUser, ok, fail, guard } from "@/server/http";
 import { getSong } from "@/server/service";
+import { listFriends } from "@/server/friends";
+import { createNotification } from "@/server/notifications";
 import type { SongVisibility } from "@/db/types";
 
 export const runtime = "nodejs";
@@ -27,6 +29,29 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         isPublic: visibility === "public",
         updatedAt: Date.now(),
       });
+
+    // Notify friends when a song becomes shareable (was previously private).
+    if ((visibility === "friends" || visibility === "public") && song.visibility !== visibility) {
+      const [friends, ownerSnap] = await Promise.all([
+        listFriends(u.userId),
+        getDb().collection("users").doc(u.userId).get(),
+      ]);
+      const od = (ownerSnap.data() ?? {}) as Record<string, unknown>;
+      const actorName =
+        (od.displayName as string) || (od.name as string) || (od.email as string) || "A friend";
+      await Promise.all(
+        friends.map((f) =>
+          createNotification({
+            userId: f.id,
+            type: "friend_song",
+            actorId: u.userId,
+            actorName,
+            songId: id,
+            message: `${actorName} shared “${song.title}”`,
+          }),
+        ),
+      );
+    }
     return ok({ ok: true, visibility });
   });
 }
