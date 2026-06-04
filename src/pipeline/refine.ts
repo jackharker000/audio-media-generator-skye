@@ -10,7 +10,8 @@ import type { JobInputParams, StageName } from "@/shared/types";
 
 /**
  * Abstraction over "run this stage" so the refinement core can be driven by the
- * Inngest step runner in production and by a trivial runner in tests.
+ * checkpointed in-process pipeline runner in production and by a trivial runner
+ * in tests.
  */
 export interface StageRunner {
   run<T>(stepId: string, stage: StageName, fn: () => Promise<T>): Promise<T>;
@@ -19,7 +20,7 @@ export interface StageRunner {
 /**
  * Stages 6-8 — the accuracy core. Runs a bounded critique→rewrite loop, then an
  * independent grounding gate that repairs contradicted lines once and hard-fails
- * if they still can't be verified. Pure of Inngest/DB so it is unit-testable.
+ * if they still can't be verified. Free of runner/DB deps so it is unit-testable.
  */
 export async function refineAndVerify(
   runner: StageRunner,

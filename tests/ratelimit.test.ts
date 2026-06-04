@@ -96,9 +96,8 @@ describe("clientIpFromHeaders", () => {
 });
 
 describe("isRateLimitExempt", () => {
-  it("exempts auth, inngest, SSE streams, and webhooks", () => {
+  it("exempts auth, SSE streams, and webhooks", () => {
     expect(isRateLimitExempt("/api/auth/session")).toBe(true);
-    expect(isRateLimitExempt("/api/inngest")).toBe(true);
     expect(isRateLimitExempt("/api/jobs/abc123/stream")).toBe(true);
     expect(isRateLimitExempt("/api/webhooks/stripe")).toBe(true);
     expect(isRateLimitExempt("/api/webhook")).toBe(true);

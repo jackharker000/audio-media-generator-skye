@@ -128,7 +128,6 @@ export function clientIpFromHeaders(headers: Headers): string {
  */
 export function isRateLimitExempt(pathname: string): boolean {
   if (pathname.startsWith("/api/auth")) return true;
-  if (pathname.startsWith("/api/inngest")) return true;
   // SSE: /api/jobs/<id>/stream
   if (/^\/api\/jobs\/[^/]+\/stream\/?$/.test(pathname)) return true;
   // Webhooks: /api/webhooks/* or any path segment named "webhook(s)".

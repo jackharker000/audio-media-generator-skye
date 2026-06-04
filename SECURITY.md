@@ -33,12 +33,12 @@ introducing a nonce-based CSP is a possible future hardening step.
 `middleware.ts` applies a lightweight, edge-safe sliding-window rate limiter to
 the API surface (`matcher: ["/api/:path*"]`):
 
-- **Limit:** 60 requests/minute per client IP (from `x-forwarded-for`, falling
-  back to `x-real-ip`).
+- **Limit:** 60 requests/minute per client IP (prefers the platform-trusted
+  `x-real-ip`, falling back to the first `x-forwarded-for` hop).
 - **Response when exceeded:** HTTP `429` with a JSON body and `Retry-After` /
   `RateLimit-*` headers.
 - **Exemptions:** Auth flows (`/api/auth/*`), the long-lived SSE job stream
-  (`/api/jobs/:id/stream`), webhook endpoints, and (future) `/api/inngest`.
+  (`/api/jobs/:id/stream`), and webhook endpoints.
 
 The limiter logic lives in `src/lib/ratelimit.ts` as a pure, unit-tested module
 (`tests/ratelimit.test.ts`). The store is an in-memory `Map` scoped to a single
