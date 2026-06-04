@@ -86,19 +86,32 @@ See [`.env.example`](./.env.example) for the full list.
    - `GEMINI_API_KEY`
    - `FIREBASE_SERVICE_ACCOUNT_JSON` — paste the **entire** service-account JSON
      as a single value (Vercel handles the newlines).
-   - `FIREBASE_STORAGE_BUCKET` — **optional** (omit to store audio in Firestore);
-     optionally `FIREBASE_PROJECT_ID`
-   - `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
-   - `APP_URL` / `NEXT_PUBLIC_APP_URL` / `AUTH_URL` = your deployment URL
-   - `MUSIC_PROVIDER=google-tts-beat`
-3. Deploy. Add your Vercel domain to the Google OAuth client's authorized
-   redirect URIs (`https://<domain>/api/auth/callback/google`).
+   - `AUTH_SECRET` (`npx auth secret`)
+   - `DEV_LOGIN=1` for a one-click demo login, **or** `AUTH_GOOGLE_ID` +
+     `AUTH_GOOGLE_SECRET` for real Google sign-in.
+   - That's it — the rest is optional (see below). No `FIREBASE_STORAGE_BUCKET`
+     (audio → Firestore), no Cloud TTS, no URL vars.
+3. Deploy.
+
+### Hard-coded production URL
+
+The production site URL is **hard-coded** to
+`https://audio-media-generator-skye.vercel.app` — see `DEFAULT_SITE_URL` in
+[`src/lib/env.ts`](./src/lib/env.ts). It's used for absolute links (share URLs)
+and as the Auth.js callback base, so OAuth redirects stay on the stable domain
+instead of the per-deploy URL. **You don't need to set `APP_URL` /
+`NEXT_PUBLIC_APP_URL` / `AUTH_URL`** (set them only to override). If your domain
+changes, edit that one constant.
+
+For Google sign-in, register this exact redirect URI in your OAuth client:
+- redirect URI: `https://audio-media-generator-skye.vercel.app/api/auth/callback/google`
+- JavaScript origin: `https://audio-media-generator-skye.vercel.app`
 
 Notes for Vercel:
 - The pipeline runs inside the `/api/jobs/[id]/stream` function (`maxDuration =
   300`). Very large documents could exceed that; trim sources or split them.
-- ffmpeg is bundled for beat-mixing; if it's unavailable in the runtime the TTS
-  engine falls back to clean speech with no beat.
+- Music uses **Gemini TTS** (no billing). `FIREBASE_STORAGE_BUCKET` is optional —
+  omit it to store audio in Firestore.
 
 ## Project layout
 

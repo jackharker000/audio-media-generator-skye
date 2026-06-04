@@ -1,6 +1,13 @@
 import { getServiceAccount, getStorageBucket } from "./googleCreds";
 
 /**
+ * Hard-coded production site URL (Vercel). Used as the default for absolute
+ * links and the Auth.js callback base so OAuth redirects stay stable across
+ * deploys. Override with APP_URL / AUTH_URL if you use a different domain.
+ */
+export const DEFAULT_SITE_URL = "https://audio-media-generator-skye.vercel.app";
+
+/**
  * Centralized, lazy environment access. Nothing throws at import time so the
  * app can build and run with only a subset of services configured.
  */
@@ -25,7 +32,9 @@ export function intEnv(key: string, fallback: number): number {
 
 export const env = {
   appUrl: () =>
-    optionalEnv("APP_URL") ?? optionalEnv("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000",
+    optionalEnv("APP_URL") ??
+    optionalEnv("NEXT_PUBLIC_APP_URL") ??
+    (process.env.NODE_ENV === "production" ? DEFAULT_SITE_URL : "http://localhost:3000"),
   geminiApiKey: () => optionalEnv("GEMINI_API_KEY"),
   musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "gemini-tts",
   storageBucket: () => getStorageBucket(),

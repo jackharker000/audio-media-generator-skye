@@ -3,7 +3,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { FirestoreAdapter } from "@auth/firebase-adapter";
 import { getDb } from "@/db";
-import { features, optionalEnv } from "@/lib/env";
+import { DEFAULT_SITE_URL, features, optionalEnv } from "@/lib/env";
 
 /**
  * Auth.js (NextAuth v5): Google OAuth in production, stored in Firestore via the
@@ -13,6 +13,12 @@ import { features, optionalEnv } from "@/lib/env";
 const hasGoogle = !!(optionalEnv("AUTH_GOOGLE_ID") && optionalEnv("AUTH_GOOGLE_SECRET"));
 const devLogin =
   optionalEnv("DEV_LOGIN") === "1" || (!hasGoogle && process.env.NODE_ENV !== "production");
+
+// Hard-code the production callback base so OAuth redirects use the stable
+// domain instead of the per-deployment URL. Override with AUTH_URL if needed.
+if (!process.env.AUTH_URL && process.env.NODE_ENV === "production") {
+  process.env.AUTH_URL = DEFAULT_SITE_URL;
+}
 
 async function ensureDemoUser(): Promise<string> {
   const id = "dev-user";
