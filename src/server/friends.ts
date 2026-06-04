@@ -1,5 +1,5 @@
 import { COLLECTIONS } from "@/db";
-import { byNewest, col, withId } from "@/db/helpers";
+import { byNewest, col, getByIds, withId } from "@/db/helpers";
 import type { DbFriendship, DbSong, DbUser, SongVisibility } from "@/db/types";
 import { createNotification } from "./notifications";
 
@@ -133,9 +133,10 @@ export async function removeFriend(userId: string, otherUserId: string): Promise
 export async function listFriends(userId: string): Promise<FriendUser[]> {
   const involving = await friendshipsInvolving(userId);
   const accepted = involving.filter((f) => f.status === "accepted");
-  const others = await Promise.all(accepted.map((f) => getUser(otherId(f, userId))));
-  return others
-    .map(toFriendUser)
+  // Resolve all the other parties in one batched read rather than N getUser()s.
+  const users = await getByIds<DbUser>("users", accepted.map((f) => otherId(f, userId)));
+  return accepted
+    .map((f) => toFriendUser(users.get(otherId(f, userId)) ?? null))
     .filter((u): u is FriendUser => u !== null)
     .sort((a, b) => (a.name ?? a.email ?? "").localeCompare(b.name ?? b.email ?? ""));
 }
@@ -150,9 +151,10 @@ export interface PendingRequest {
 export async function listIncoming(userId: string): Promise<PendingRequest[]> {
   const snap = await col(COLLECTIONS.friendships).where("addresseeId", "==", userId).get();
   const pending = snap.docs.map((d) => withId<DbFriendship>(d)).filter((f) => f.status === "pending");
+  const users = await getByIds<DbUser>("users", pending.map((f) => f.requesterId));
   const out: PendingRequest[] = [];
   for (const f of pending.sort(byNewest)) {
-    const user = toFriendUser(await getUser(f.requesterId));
+    const user = toFriendUser(users.get(f.requesterId) ?? null);
     if (user) out.push({ id: f.id, user, createdAt: f.createdAt });
   }
   return out;
@@ -174,9 +176,10 @@ export async function countIncoming(userId: string): Promise<number> {
 export async function listOutgoing(userId: string): Promise<PendingRequest[]> {
   const snap = await col(COLLECTIONS.friendships).where("requesterId", "==", userId).get();
   const pending = snap.docs.map((d) => withId<DbFriendship>(d)).filter((f) => f.status === "pending");
+  const users = await getByIds<DbUser>("users", pending.map((f) => f.addresseeId));
   const out: PendingRequest[] = [];
   for (const f of pending.sort(byNewest)) {
-    const user = toFriendUser(await getUser(f.addresseeId));
+    const user = toFriendUser(users.get(f.addresseeId) ?? null);
     if (user) out.push({ id: f.id, user, createdAt: f.createdAt });
   }
   return out;

@@ -135,6 +135,20 @@ export function SongPlayer({
     ...(facts.length ? [{ id: "quiz" as Tab, label: "Quiz" }] : []),
   ];
 
+  // WAI-ARIA tab keyboard nav: arrows move (and wrap), Home/End jump to ends.
+  function onTabKey(e: React.KeyboardEvent, idx: number) {
+    let next = -1;
+    if (e.key === "ArrowRight") next = (idx + 1) % tabs.length;
+    else if (e.key === "ArrowLeft") next = (idx - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    const target = tabs[next];
+    setTab(target.id);
+    document.getElementById(`tab-${target.id}`)?.focus();
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -176,14 +190,16 @@ export function SongPlayer({
 
       {/* Tabs */}
       <div role="tablist" aria-label="Song views" className="flex gap-1 border-b border-slate-200">
-        {tabs.map((t) => (
+        {tabs.map((t, i) => (
           <button
             key={t.id}
             role="tab"
             id={`tab-${t.id}`}
             aria-selected={tab === t.id}
             aria-controls={`panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
+            onKeyDown={(e) => onTabKey(e, i)}
             className={`px-3 py-2 text-sm font-medium ${
               tab === t.id
                 ? "border-b-2 border-brand-600 text-brand-700"

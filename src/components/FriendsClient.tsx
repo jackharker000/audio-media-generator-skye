@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Cover } from "./Cover";
+import { genreLabel } from "@/shared/constants";
 
 interface FriendUser {
   id: string;
@@ -216,8 +217,9 @@ export function FriendsClient({
                     <p className="truncate text-sm text-slate-600">
                       by {displayName(item.owner)}
                     </p>
-                    <p className="text-xs text-slate-400">
-                      {item.genre ?? "song"} · {new Date(item.createdAt).toLocaleDateString()}
+                    <p className="text-xs text-slate-500">
+                      {item.genre ? genreLabel(item.genre) : "Song"} ·{" "}
+                      {new Date(item.createdAt).toLocaleDateString()}
                     </p>
                   </div>
                 </Link>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Cover } from "./Cover";
+import { genreLabel } from "@/shared/constants";
 
 interface SongCard {
   id: string;
@@ -46,8 +47,9 @@ export function LibraryClient({ songs }: { songs: SongCard[] }) {
                     )}
                   </div>
                   {s.description && <p className="truncate text-sm text-slate-600">{s.description}</p>}
-                  <p className="text-xs text-slate-400">
-                    {s.genre ?? "song"} · {new Date(s.createdAt).toLocaleDateString()}
+                  <p className="text-xs text-slate-500">
+                    {s.genre ? genreLabel(s.genre) : "Song"} ·{" "}
+                    {new Date(s.createdAt).toLocaleDateString()}
                   </p>
                 </div>
               </Link>
