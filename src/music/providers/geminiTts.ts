@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { env, features, optionalEnv } from "@/lib/env";
 import { putObject } from "@/storage";
-import { bufferToInt16LE, wavEncode } from "../audio";
+import { bufferToInt16LE } from "../audio";
+import { encodeFinal } from "../encode";
 import type { MusicProvider, MusicRequest, MusicResult } from "../types";
 
 /**
@@ -105,8 +106,9 @@ export const geminiTts: MusicProvider = {
       throw new Error("GEMINI_API_KEY not set — Gemini TTS can't run.");
     }
     const { pcm, sampleRate } = await geminiSpeechPcm(req);
-    const key = `songs/${jobId}.wav`;
-    await putObject(key, wavEncode(pcm, sampleRate), "audio/wav");
-    return { storageKey: key, contentType: "audio/wav" };
+    const { buffer, contentType, ext } = await encodeFinal(pcm, sampleRate);
+    const key = `songs/${jobId}.${ext}`;
+    await putObject(key, buffer, contentType);
+    return { storageKey: key, contentType };
   },
 };

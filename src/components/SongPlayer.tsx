@@ -175,15 +175,19 @@ export function SongPlayer({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200">
+      <div role="tablist" aria-label="Song views" className="flex gap-1 border-b border-slate-200">
         {tabs.map((t) => (
           <button
             key={t.id}
+            role="tab"
+            id={`tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`panel-${t.id}`}
             onClick={() => setTab(t.id)}
             className={`px-3 py-2 text-sm font-medium ${
               tab === t.id
                 ? "border-b-2 border-brand-600 text-brand-700"
-                : "text-slate-500 hover:text-slate-800"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             {t.label}
@@ -194,7 +198,7 @@ export function SongPlayer({
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {tab === "play" && (
-        <div className="card space-y-4">
+        <div role="tabpanel" id="panel-play" aria-labelledby="tab-play" className="card space-y-4">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <audio
             controls
@@ -225,7 +229,7 @@ export function SongPlayer({
       )}
 
       {tab === "lyrics" && (
-        <div className="card">
+        <div role="tabpanel" id="panel-lyrics" aria-labelledby="tab-lyrics" className="card">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-semibold">Lyrics</h3>
             <button
@@ -271,7 +275,12 @@ export function SongPlayer({
       )}
 
       {tab === "facts" && (
-        <div className="card space-y-5">
+        <div
+          role="tabpanel"
+          id="panel-facts"
+          aria-labelledby="tab-facts"
+          className="card space-y-5"
+        >
           <div>
             <h3 className="mb-2 font-semibold">Key facts to remember</h3>
             <ol className="space-y-1.5 text-sm">
@@ -279,7 +288,12 @@ export function SongPlayer({
                 .sort((a, b) => b.importance - a.importance)
                 .map((f) => (
                   <li key={f.factId} className="flex gap-2">
-                    <span className="text-brand-500">{"★".repeat(Math.max(1, Math.min(5, f.importance)))}</span>
+                    <span className="text-brand-500" aria-hidden="true">
+                      {"★".repeat(Math.max(1, Math.min(5, f.importance)))}
+                    </span>
+                    <span className="sr-only">
+                      Importance {Math.max(1, Math.min(5, f.importance))} of 5:
+                    </span>
                     <span>{f.claim}</span>
                   </li>
                 ))}
@@ -306,7 +320,7 @@ export function SongPlayer({
       )}
 
       {tab === "quiz" && facts.length > 0 && (
-        <div className="card">
+        <div role="tabpanel" id="panel-quiz" aria-labelledby="tab-quiz" className="card">
           <Quiz songId={song.id} />
         </div>
       )}

@@ -65,9 +65,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
         <Nav />
-        <main className="mx-auto max-w-5xl px-4 py-6 sm:py-8">{children}</main>
-        <footer className="mx-auto max-w-5xl px-4 py-10 text-center text-xs text-slate-400">
+        <main id="main-content" className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
+          {children}
+        </main>
+        <footer className="mx-auto max-w-5xl px-4 py-10 text-center text-xs text-slate-500">
           Songs are AI-generated. Verify important facts against your sources.
         </footer>
       </body>

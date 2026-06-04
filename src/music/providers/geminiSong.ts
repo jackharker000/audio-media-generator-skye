@@ -9,8 +9,8 @@ import {
   normalize,
   resampleMono,
   wavDecode,
-  wavEncode,
 } from "../audio";
+import { encodeFinal } from "../encode";
 import { defaultArrangement, synthesizeArrangement } from "../synth";
 import type { MusicProvider, MusicRequest, MusicResult } from "../types";
 import { geminiSpeechPcm } from "./geminiTts";
@@ -80,8 +80,9 @@ export const geminiSong: MusicProvider = {
     }
     normalize(mix, 0.97);
 
-    const key = `songs/${jobId}.wav`;
-    await putObject(key, wavEncode(floatToInt16(mix), sampleRate), "audio/wav");
-    return { storageKey: key, contentType: "audio/wav" };
+    const { buffer, contentType, ext } = await encodeFinal(floatToInt16(mix), sampleRate);
+    const key = `songs/${jobId}.${ext}`;
+    await putObject(key, buffer, contentType);
+    return { storageKey: key, contentType };
   },
 };
