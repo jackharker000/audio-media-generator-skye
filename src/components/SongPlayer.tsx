@@ -40,13 +40,17 @@ export function SongPlayer({
   facts = [],
   lines = [],
   canEdit,
+  audioSrc,
 }: {
   song: SongView;
   facts?: FactView[];
   lines?: LineView[];
   canEdit: boolean;
+  audioSrc?: string;
 }) {
   const router = useRouter();
+  const audioUrl = audioSrc ?? `/api/songs/${song.id}/audio`;
+  const downloadUrl = `${audioUrl}${audioUrl.includes("?") ? "&" : "?"}download=1`;
   const [tab, setTab] = useState<Tab>("play");
   const [progress, setProgress] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -139,7 +143,7 @@ export function SongPlayer({
           <h1 className="truncate text-2xl font-bold">{song.title}</h1>
           {song.description && <p className="mt-1 text-sm text-slate-600">{song.description}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
-            <a className="btn-ghost" href={`/api/songs/${song.id}/audio?download=1`}>
+            <a className="btn-ghost" href={downloadUrl}>
               ⬇ Download
             </a>
             {canEdit && (
@@ -194,7 +198,7 @@ export function SongPlayer({
           <audio
             controls
             className="w-full"
-            src={`/api/songs/${song.id}/audio`}
+            src={audioUrl}
             onTimeUpdate={(e) => {
               const el = e.currentTarget;
               if (el.duration) setProgress(el.currentTime / el.duration);
