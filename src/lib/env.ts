@@ -27,7 +27,7 @@ export const env = {
   appUrl: () =>
     optionalEnv("APP_URL") ?? optionalEnv("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000",
   geminiApiKey: () => optionalEnv("GEMINI_API_KEY"),
-  musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "google-tts-beat",
+  musicProvider: () => optionalEnv("MUSIC_PROVIDER") ?? "gemini-tts",
   storageBucket: () => getStorageBucket(),
   maxRewrites: () => intEnv("PIPELINE_MAX_REWRITES", 2),
   quotaSongsPerDay: () => intEnv("QUOTA_SONGS_PER_DAY", 20),

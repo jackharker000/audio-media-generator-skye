@@ -1,12 +1,16 @@
+import { env } from "@/lib/env";
 import type { MusicProvider } from "./types";
+import { geminiTts } from "./providers/geminiTts";
 import { googleTtsBeat } from "./providers/googleTtsBeat";
 
 /**
- * Google-only build: the single music engine is Google Cloud Text-to-Speech
- * (spoken/rapped over an optional beat). Kept behind a small registry so more
- * engines could be added later without touching the pipeline.
+ * Music engines, both Google and free:
+ *   - "gemini-tts"      (default): uses the AI Studio GEMINI_API_KEY — no billing.
+ *   - "google-tts-beat": Google Cloud Text-to-Speech (needs a billing-enabled
+ *                        project) over an optional beat.
  */
 const PROVIDERS: Record<string, MusicProvider> = {
+  [geminiTts.id]: geminiTts,
   [googleTtsBeat.id]: googleTtsBeat,
 };
 
@@ -20,8 +24,8 @@ export function listProviders(): MusicProvider[] {
   return Object.values(PROVIDERS);
 }
 
-/** Resolve the provider to use. Currently always the free Google TTS engine. */
+/** Resolve the provider: explicit request → configured default → Gemini TTS. */
 export function resolveProvider(requested?: string): MusicProvider {
   if (requested && PROVIDERS[requested]) return PROVIDERS[requested];
-  return googleTtsBeat;
+  return PROVIDERS[env.musicProvider()] ?? geminiTts;
 }

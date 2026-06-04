@@ -37,7 +37,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     "Cache-Control": "private, max-age=3600",
   };
   if (download) {
-    headers["Content-Disposition"] = `attachment; filename="${song.title.replace(/[^a-z0-9]+/gi, "_")}.mp3"`;
+    const ext = (song.audioStorageKey.split(".").pop() || "audio").toLowerCase();
+    headers["Content-Disposition"] = `attachment; filename="${song.title.replace(/[^a-z0-9]+/gi, "_")}.${ext}"`;
   }
   return new Response(new Uint8Array(buf), { headers });
 }

@@ -15,14 +15,14 @@ repeating chorus.
 | Lyrics + all reasoning | **Google Gemini** (`@google/genai`, 2.5 Flash / Flash-Lite) |
 | Database | **Cloud Firestore** (Firebase) |
 | File + audio storage | **Firestore** by default (no bucket needed); optional Cloud Storage |
-| The "music" | **Google Cloud Text-to-Speech** |
+| The "music" | **Gemini TTS** (same free key, **no Cloud billing**) |
 | Sign-in | **Google OAuth** (Auth.js) |
 | Hosting | **Vercel** |
 
 > ⚠️ **Spoken, not sung.** Google's free tier can't truly *sing* (Lyria with
-> vocals is paid). So MnemoSong's Google-only engine has Gemini write the lyrics
-> and **Google Cloud TTS speak/rap them over an optional beat**. It's free and
-> maximally intelligible — great for memorization.
+> vocals is paid). So MnemoSong has Gemini write the lyrics and **Gemini TTS
+> speak/rap them** with a musical delivery — on the same free AI Studio key, with
+> **no Google Cloud billing**. Free and maximally intelligible — great for memorization.
 
 ## How it works
 
@@ -67,7 +67,9 @@ audio is written to `.data/` and served locally.
 2. **A Firebase project** (free Spark plan):
    - Enable **Firestore**. (Cloud Storage is **optional** — by default audio is
      stored in Firestore, so you don't need a bucket or the Blaze plan.)
-   - Enable the **Cloud Text-to-Speech API** in the Google Cloud console.
+   - No Cloud Text-to-Speech needed — the music uses **Gemini TTS** via your
+     `GEMINI_API_KEY` (no billing). (Only set `MUSIC_PROVIDER=google-tts-beat` if
+     you'd rather use Cloud TTS, which requires a billing-enabled project.)
    - Create a **service account key** (JSON).
    - Put the JSON inline in `FIREBASE_SERVICE_ACCOUNT_JSON` (one line) or point
      `GOOGLE_APPLICATION_CREDENTIALS` at the file. (Set `FIREBASE_STORAGE_BUCKET`
