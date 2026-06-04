@@ -139,6 +139,11 @@ src/components/          # React UI (client components)
   login (`DEV_LOGIN=1`) — gets its own notebooks and library.
 - **Resuming:** generation runs while the page is open; progress is checkpointed to
   Firestore, so reopening an in-progress notebook resumes it where it left off.
+- **ACE-Step (real singing):** set `MUSIC_PROVIDER=ace-step` for an open-source model
+  that truly sings with full production. Pick a backend — the hosted **ACE Music API**
+  (`ACEMUSIC_API_KEY`, free key at acemusic.ai), a **self-hosted** server
+  (`ACESTEP_LOCAL_URL`), or a **HF Space** (`ACESTEP_HF_SPACE`, experimental). If it's
+  unavailable, the pipeline automatically falls back to `gemini-song`.
 - **Optional beats**: drop royalty-free loops in `public/beats/<genre>.mp3` (and a
   `default.mp3`) to give the TTS engine a backing track. Keep them license-clear.
 

@@ -3,16 +3,20 @@ import type { MusicProvider } from "./types";
 import { geminiSong } from "./providers/geminiSong";
 import { geminiTts } from "./providers/geminiTts";
 import { googleTtsBeat } from "./providers/googleTtsBeat";
+import { aceStep } from "./providers/aceStep";
 
 /**
- * Music engines (all Google, all free):
- *   - "gemini-song" (default): Gemini TTS vocal + pure-JS synth backing
- *     (chords/bass/drums from a Gemini-designed arrangement) + optional loops.
+ * Music engines:
+ *   - "gemini-song" (default + fallback): Gemini TTS vocal + pure-JS synth
+ *     backing (chords/bass/drums) + optional loops. Free, no GPU.
+ *   - "ace-step": open-source model that truly sings + full production, via the
+ *     ACE Music API / self-hosted server / a HF Space. Falls back to gemini-song.
  *   - "gemini-tts": voice only (no backing music).
  *   - "google-tts-beat": Cloud TTS over an ffmpeg-mixed beat (needs Cloud billing).
  */
 const PROVIDERS: Record<string, MusicProvider> = {
   [geminiSong.id]: geminiSong,
+  [aceStep.id]: aceStep,
   [geminiTts.id]: geminiTts,
   [googleTtsBeat.id]: googleTtsBeat,
 };

@@ -102,12 +102,25 @@ export async function runPipeline(jobId: string): Promise<void> {
     let audioKey = cp.audioKey;
     if (!audioKey || !(await objectExists(audioKey))) {
       audioKey = await runStage(jobId, "music", async () => {
-        if (!provider.render) throw new Error(`Provider ${provider.id} cannot render audio`);
-        const music = await provider.render(musicReq!, { jobId });
-        const ext = (music.contentType ?? "").includes("wav") ? "wav" : "mp3";
-        const key = music.storageKey ?? `songs/${jobId}.${ext}`;
-        if (!music.storageKey && music.audioUrl) await fetchExternalToBlob(music.audioUrl, key);
-        return key;
+        const renderWith = async (p: typeof provider) => {
+          if (!p.render) throw new Error(`Provider ${p.id} cannot render audio`);
+          const music = await p.render(musicReq!, { jobId });
+          const ext = (music.contentType ?? "").includes("wav") ? "wav" : "mp3";
+          const key = music.storageKey ?? `songs/${jobId}.${ext}`;
+          if (!music.storageKey && music.audioUrl) await fetchExternalToBlob(music.audioUrl, key);
+          return key;
+        };
+        try {
+          return await renderWith(provider);
+        } catch (e) {
+          if (provider.id === "gemini-song") throw e;
+          // ACE-Step (or another engine) failed — fall back to the reliable free engine.
+          await store.setStage(jobId, "music", {
+            status: "running",
+            note: `${provider.id} unavailable (${String((e as Error)?.message ?? e).slice(0, 100)}); using gemini-song`,
+          });
+          return renderWith(resolveProvider("gemini-song"));
+        }
       });
       await saveCp({ audioKey });
     }

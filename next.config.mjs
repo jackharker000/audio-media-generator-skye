@@ -7,6 +7,7 @@ const nextConfig = {
     "@google-cloud/firestore",
     "@google-cloud/storage",
     "@google-cloud/text-to-speech",
+    "@gradio/client",
     "fluent-ffmpeg",
     "ffmpeg-static",
     "unpdf",

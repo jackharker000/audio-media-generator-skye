@@ -6,7 +6,8 @@ describe("music registry (Google, free)", () => {
     expect(getProvider("gemini-song").id).toBe("gemini-song");
     expect(getProvider("gemini-song").capabilities.free).toBe(true);
     expect(getProvider("gemini-tts").id).toBe("gemini-tts");
-    expect(() => getProvider("fal-acestep")).toThrow();
+    expect(getProvider("ace-step").capabilities.sings).toBe(true);
+    expect(() => getProvider("nope")).toThrow();
   });
 
   it("defaults to the full gemini-song engine, honoring explicit requests", () => {
@@ -18,6 +19,7 @@ describe("music registry (Google, free)", () => {
   it("lists the available engines", () => {
     const ids = listProviders().map((p) => p.id);
     expect(ids).toContain("gemini-song");
+    expect(ids).toContain("ace-step");
     expect(ids).toContain("gemini-tts");
     expect(ids).toContain("google-tts-beat");
   });
