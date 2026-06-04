@@ -13,6 +13,7 @@ import { songsToday } from "@/pipeline/jobStore";
 import { slugify } from "@/lib/utils";
 import { generateQuiz } from "@/agents/quiz";
 import { getUserLimits } from "@/server/admin";
+import { getViewableSong } from "@/server/friends";
 import type { Fact, QuizQuestion } from "@/agents/schemas";
 import type { JobInputParams } from "@/shared/types";
 
@@ -260,14 +261,15 @@ export async function deleteShare(userId: string, songId: string): Promise<void>
 
 export async function getShareBySlug(
   slug: string,
-): Promise<{ share: DbShare; song: DbSong } | null> {
+): Promise<{ share: DbShare; song: DbSong; facts: Fact[]; lines: DbSong["lineFactMap"] } | null> {
   const snap = await col(COLLECTIONS.shares).where("slug", "==", slug).limit(1).get();
   if (snap.empty) return null;
   const share = withId<DbShare>(snap.docs[0]);
   if (share.expiresAt && share.expiresAt < Date.now()) return null;
   const songSnap = await col(COLLECTIONS.songs).doc(share.songId).get();
   if (!songSnap.exists) return null;
-  return { share, song: withId<DbSong>(songSnap) };
+  const song = withId<DbSong>(songSnap);
+  return { share, song, facts: await factsForSong(song), lines: song.lineFactMap ?? [] };
 }
 
 // ---- Study features (facts, quiz, deletion) -------------------------------
@@ -284,16 +286,41 @@ export async function getSongView(userId: string, songId: string) {
   return { song, facts: await factsForSong(song), lines: song.lineFactMap ?? [] };
 }
 
-export async function getOrCreateQuiz(userId: string, songId: string): Promise<QuizQuestion[]> {
-  const song = await getSong(userId, songId);
-  if (!song) throw new Error("Song not found");
+/**
+ * Study view (song + facts + line→fact map) for anyone allowed to see the song,
+ * not just the owner — gated by visibility/friendship via {@link getViewableSong}.
+ */
+export async function getViewableSongView(viewerId: string | null, songId: string) {
+  const song = await getViewableSong(viewerId, songId);
+  if (!song) return null;
+  return { song, facts: await factsForSong(song), lines: song.lineFactMap ?? [] };
+}
+
+/** Build (or return the cached) recall quiz for a song the caller can already access. */
+async function quizForSong(song: DbSong): Promise<QuizQuestion[]> {
   if (song.quiz && song.quiz.length) return song.quiz;
   const facts = await factsForSong(song);
   if (!facts.length) throw new Error("No source facts available to build a quiz.");
   const count = Math.min(8, Math.max(4, Math.ceil(facts.length / 2)));
   const quiz = await generateQuiz(facts, count);
-  await col(COLLECTIONS.songs).doc(songId).update({ quiz: quiz.questions, updatedAt: Date.now() });
+  await col(COLLECTIONS.songs).doc(song.id).update({ quiz: quiz.questions, updatedAt: Date.now() });
   return quiz.questions;
+}
+
+export async function getOrCreateQuiz(userId: string, songId: string): Promise<QuizQuestion[]> {
+  const song = await getSong(userId, songId);
+  if (!song) throw new Error("Song not found");
+  return quizForSong(song);
+}
+
+/** Quiz access for any allowed viewer (owner, friend, or public share). */
+export async function getOrCreateQuizForViewer(
+  viewerId: string | null,
+  songId: string,
+): Promise<QuizQuestion[]> {
+  const song = await getViewableSong(viewerId, songId);
+  if (!song) throw new Error("Song not found");
+  return quizForSong(song);
 }
 
 export async function deleteSong(userId: string, songId: string): Promise<void> {

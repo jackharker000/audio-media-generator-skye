@@ -22,13 +22,15 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
   const { slug } = await params;
   const found = await getShareBySlug(slug).catch(() => null);
   if (!found) notFound();
-  const { song } = found;
+  const { song, facts, lines } = found;
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500">Shared via MnemoSong 🎵</p>
       <SongPlayer
         canEdit={false}
+        facts={facts}
+        lines={lines ?? []}
         song={{
           id: song.id,
           title: song.title,

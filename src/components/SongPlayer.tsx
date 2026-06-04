@@ -126,11 +126,13 @@ export function SongPlayer({
   }
 
   const claimFor = (id: string) => facts.find((f) => f.factId === id)?.claim;
+  // Facts + Quiz are study aids: surface them to anyone who can see the song
+  // (owner, friend, or public share), gated only on whether facts exist.
   const tabs: { id: Tab; label: string }[] = [
     { id: "play", label: "▶ Play" },
     { id: "lyrics", label: "Lyrics" },
     ...(facts.length ? [{ id: "facts" as Tab, label: "Facts" }] : []),
-    ...(canEdit ? [{ id: "quiz" as Tab, label: "Quiz" }] : []),
+    ...(facts.length ? [{ id: "quiz" as Tab, label: "Quiz" }] : []),
   ];
 
   return (
@@ -303,7 +305,7 @@ export function SongPlayer({
         </div>
       )}
 
-      {tab === "quiz" && canEdit && (
+      {tab === "quiz" && facts.length > 0 && (
         <div className="card">
           <Quiz songId={song.id} />
         </div>

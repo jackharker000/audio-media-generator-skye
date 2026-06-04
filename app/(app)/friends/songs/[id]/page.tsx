@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { features } from "@/lib/env";
 import { requireUserPage } from "@/server/pageAuth";
-import { getViewableSong } from "@/server/friends";
+import { getViewableSongView } from "@/server/service";
 import { SongPlayer } from "@/components/SongPlayer";
 import { SetupNotice } from "@/components/SetupNotice";
 
@@ -12,8 +12,9 @@ export default async function FriendSongPage({ params }: { params: Promise<{ id:
   if (!features.hasDb()) return <SetupNotice />;
   const viewerId = await requireUserPage();
   const { id } = await params;
-  const song = await getViewableSong(viewerId, id);
-  if (!song) notFound();
+  const view = await getViewableSongView(viewerId, id);
+  if (!view) notFound();
+  const { song, facts, lines } = view;
 
   return (
     <div className="space-y-4">
@@ -23,6 +24,8 @@ export default async function FriendSongPage({ params }: { params: Promise<{ id:
       <SongPlayer
         canEdit={false}
         audioSrc={`/api/friends/songs/${song.id}/audio`}
+        facts={facts}
+        lines={lines}
         song={{
           id: song.id,
           title: song.title,
