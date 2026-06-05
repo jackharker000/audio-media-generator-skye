@@ -31,6 +31,8 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
         canEdit={false}
         facts={facts}
         lines={lines ?? []}
+        audioSrc={`/api/s/${slug}/audio`}
+        quizSrc={`/api/s/${slug}/quiz`}
         song={{
           id: song.id,
           title: song.title,

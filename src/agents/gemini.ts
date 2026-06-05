@@ -114,7 +114,14 @@ async function callModel(opts: {
       const waitMs = Math.min(Math.max(soonestAvailable(keys) - Date.now(), 800), 60_000);
       await sleep(waitMs + Math.random() * 300);
       key = pickKey(keys);
-      if (!key) continue; // all still cooling/invalid — re-evaluate
+      if (!key) {
+        // Every key is still cooling. Count the wait against the retry budget so
+        // a sustained 429 storm can't spin here indefinitely past maxRetries.
+        if (++attempt > maxRetries) {
+          throw lastErr ?? new Error("All Gemini API keys are rate-limited; try again shortly.");
+        }
+        continue;
+      }
     }
 
     try {
@@ -170,7 +177,9 @@ function extractJson(text: string): string {
       if (depth === 0) return body.slice(start, i + 1);
     }
   }
-  return body.slice(start).trim();
+  // Reached the end with an open structure: the JSON was truncated (commonly a
+  // token-limit cutoff). Fail clearly instead of returning a partial fragment.
+  throw new Error("Truncated or unbalanced JSON in model response (raise maxOutputTokens).");
 }
 
 export async function generateJson<S extends z.ZodTypeAny>(opts: {
@@ -200,23 +209,29 @@ export async function generateJson<S extends z.ZodTypeAny>(opts: {
   try {
     return tryParse(raw);
   } catch (firstErr) {
-    const fix = await callModel({
-      model,
-      system: opts.system,
-      parts: [
-        ...parts,
-        {
-          text:
-            "Your previous response was invalid JSON or failed schema validation:\n" +
-            String(firstErr) +
-            "\nReturn ONLY corrected, valid JSON. No prose, no markdown fences.",
-        },
-      ],
-      temperature: 0.2,
-      json: true,
-      maxOutputTokens: opts.maxOutputTokens,
-    });
-    return tryParse(fix);
+    try {
+      const fix = await callModel({
+        model,
+        system: opts.system,
+        parts: [
+          ...parts,
+          {
+            text:
+              "Your previous response was invalid JSON or failed schema validation:\n" +
+              String(firstErr) +
+              "\nReturn ONLY corrected, valid JSON. No prose, no markdown fences.",
+          },
+        ],
+        temperature: 0.2,
+        json: true,
+        maxOutputTokens: opts.maxOutputTokens,
+      });
+      return tryParse(fix);
+    } catch (secondErr) {
+      // Keep the original schema/parse failure visible — the retry may have hit
+      // an unrelated transient error (e.g. 429) that would otherwise mask it.
+      throw new Error(`Gemini JSON invalid after retry — first: ${String(firstErr)}; retry: ${String(secondErr)}`);
+    }
   }
 }
 

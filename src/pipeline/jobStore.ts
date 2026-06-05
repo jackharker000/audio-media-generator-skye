@@ -135,7 +135,9 @@ export async function createSongAndFinish(args: {
   }
 
   const now = Date.now();
-  const songRef = await songsCol().add({
+  const jobRef = jobs().doc(jobId);
+  const songRef = songsCol().doc();
+  const songData = {
     projectId: bundle.job.projectId,
     userId: bundle.job.userId,
     jobId,
@@ -159,26 +161,39 @@ export async function createSongAndFinish(args: {
     rootSongId,
     version,
     isPublic: false,
-    visibility: "private",
+    visibility: "private" as const,
     createdAt: now,
     updatedAt: now,
-  });
+  };
 
-  await jobs().doc(jobId).update({
-    status: "succeeded",
-    songId: songRef.id,
-    currentStage: "finalize",
-    updatedAt: Date.now(),
+  // Idempotent finalize: if a stale re-drive briefly ran a second copy of this
+  // job, the first to commit sets `songId`; the loser's transaction re-reads it
+  // and returns that id without creating a second song (so one job → one song).
+  return getDb().runTransaction(async (t) => {
+    const jobSnap = await t.get(jobRef);
+    const existing = jobSnap.data()?.songId as string | undefined;
+    if (existing) return existing;
+    t.set(songRef, songData);
+    t.update(jobRef, {
+      status: "succeeded",
+      songId: songRef.id,
+      currentStage: "finalize",
+      updatedAt: Date.now(),
+    });
+    return songRef.id;
   });
-
-  await incrementSongCount(bundle.job.userId);
-  return songRef.id;
 }
 
 export async function markFailed(jobId: string, error: string): Promise<void> {
-  await jobs()
-    .doc(jobId)
-    .update({ status: "failed", error: error.slice(0, 2000), updatedAt: Date.now() })
+  const ref = jobs().doc(jobId);
+  // Never clobber a job that already succeeded — a stale re-drive's second copy
+  // could fail late, after the first copy finished, and must not flip it to failed.
+  await getDb()
+    .runTransaction(async (t) => {
+      const snap = await t.get(ref);
+      if (!snap.exists || snap.data()?.status === "succeeded") return;
+      t.update(ref, { status: "failed", error: error.slice(0, 2000), updatedAt: Date.now() });
+    })
     .catch(() => {});
 }
 
@@ -193,12 +208,22 @@ export async function songsToday(userId: string): Promise<number> {
   return (snap.data()?.songsGenerated as number) ?? 0;
 }
 
-export async function incrementSongCount(userId: string): Promise<void> {
+/**
+ * Atomically reserve one slot against the daily cap, at enqueue time. Reserving
+ * here (instead of incrementing at finalize) closes the TOCTOU where several
+ * rapid submissions each read a stale count of 0 and all slip past the cap: the
+ * transaction serializes concurrent reservations on the per-day usage doc.
+ * Throws when the cap is already reached. A reservation is intentionally kept
+ * even if the job later fails (abuse protection); the daily window resets in UTC.
+ */
+export async function reserveDailyQuota(userId: string, cap: number): Promise<void> {
   const windowDate = todayUtc();
-  await usage()
-    .doc(`${userId}_${windowDate}`)
-    .set(
-      { userId, windowDate, songsGenerated: FieldValue.increment(1) },
-      { merge: true },
-    );
+  const ref = usage().doc(`${userId}_${windowDate}`);
+  await getDb().runTransaction(async (t) => {
+    const used = (await t.get(ref)).data()?.songsGenerated ?? 0;
+    if (used >= cap) {
+      throw new Error(`Daily limit reached (${cap} songs). Try again tomorrow.`);
+    }
+    t.set(ref, { userId, windowDate, songsGenerated: used + 1 }, { merge: true });
+  });
 }

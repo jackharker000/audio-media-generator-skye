@@ -14,6 +14,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       lyrics: String(body.lyrics),
       genre: body.genre,
       voiceGender: body.voiceGender,
+      voiceStyle: body.voiceStyle,
+      provider: body.provider,
     });
     return ok({ jobId });
   });

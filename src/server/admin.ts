@@ -83,7 +83,9 @@ export async function listUsersWithUsage(limit = 200): Promise<AdminUserRow[]> {
     }),
   );
 
-  return rows.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  // Newest first; fall back to id for a stable order when createdAt is absent
+  // (older accounts created before createdAt was stamped).
+  return rows.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.id.localeCompare(b.id));
 }
 
 export interface UserFlags {

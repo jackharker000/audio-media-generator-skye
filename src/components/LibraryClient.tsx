@@ -49,7 +49,7 @@ export function LibraryClient({ songs }: { songs: SongCard[] }) {
                   {s.description && <p className="truncate text-sm text-slate-600">{s.description}</p>}
                   <p className="text-xs text-slate-500">
                     {s.genre ? genreLabel(s.genre) : "Song"} ·{" "}
-                    {new Date(s.createdAt).toLocaleDateString()}
+                    {new Date(s.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" })}
                   </p>
                 </div>
               </Link>

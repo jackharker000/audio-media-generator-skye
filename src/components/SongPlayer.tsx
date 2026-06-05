@@ -40,12 +40,14 @@ export function SongPlayer({
   lines = [],
   canEdit,
   audioSrc,
+  quizSrc,
 }: {
   song: SongView;
   facts?: FactView[];
   lines?: LineView[];
   canEdit: boolean;
   audioSrc?: string;
+  quizSrc?: string;
 }) {
   const router = useRouter();
   const audioUrl = audioSrc ?? `/api/songs/${song.id}/audio`;
@@ -70,7 +72,7 @@ export function SongPlayer({
         headers: { "Content-Type": "application/json" },
         body: body ? JSON.stringify(body) : undefined,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Request failed");
       return data;
     } catch (e) {
@@ -135,6 +137,10 @@ export function SongPlayer({
     ...(facts.length ? [{ id: "quiz" as Tab, label: "Quiz" }] : []),
   ];
 
+  // The selected tab may no longer exist (e.g. facts/quiz hidden when there are
+  // no facts); fall back to "play" so the tablist always has a focusable tab.
+  const activeTab: Tab = tabs.some((t) => t.id === tab) ? tab : "play";
+
   // WAI-ARIA tab keyboard nav: arrows move (and wrap), Home/End jump to ends.
   function onTabKey(e: React.KeyboardEvent, idx: number) {
     let next = -1;
@@ -195,13 +201,13 @@ export function SongPlayer({
             key={t.id}
             role="tab"
             id={`tab-${t.id}`}
-            aria-selected={tab === t.id}
+            aria-selected={activeTab === t.id}
             aria-controls={`panel-${t.id}`}
-            tabIndex={tab === t.id ? 0 : -1}
+            tabIndex={activeTab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
             onKeyDown={(e) => onTabKey(e, i)}
             className={`px-3 py-2 text-sm font-medium ${
-              tab === t.id
+              activeTab === t.id
                 ? "border-b-2 border-brand-600 text-brand-700"
                 : "text-slate-600 hover:text-slate-900"
             }`}
@@ -213,7 +219,7 @@ export function SongPlayer({
 
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-      {tab === "play" && (
+      {activeTab === "play" && (
         <div role="tabpanel" id="panel-play" aria-labelledby="tab-play" className="card space-y-4">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <audio
@@ -244,7 +250,7 @@ export function SongPlayer({
         </div>
       )}
 
-      {tab === "lyrics" && (
+      {activeTab === "lyrics" && (
         <div role="tabpanel" id="panel-lyrics" aria-labelledby="tab-lyrics" className="card">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-semibold">Lyrics</h3>
@@ -290,7 +296,7 @@ export function SongPlayer({
         </div>
       )}
 
-      {tab === "facts" && (
+      {activeTab === "facts" && (
         <div
           role="tabpanel"
           id="panel-facts"
@@ -335,9 +341,9 @@ export function SongPlayer({
         </div>
       )}
 
-      {tab === "quiz" && facts.length > 0 && (
+      {activeTab === "quiz" && facts.length > 0 && (
         <div role="tabpanel" id="panel-quiz" aria-labelledby="tab-quiz" className="card">
-          <Quiz songId={song.id} />
+          <Quiz songId={song.id} quizSrc={quizSrc} />
         </div>
       )}
     </div>

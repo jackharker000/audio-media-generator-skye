@@ -10,19 +10,21 @@ interface Q {
 }
 
 /** Active-recall quiz generated from the song's source facts (cached server-side). */
-export function Quiz({ songId }: { songId: string }) {
+export function Quiz({ songId, quizSrc }: { songId: string; quizSrc?: string }) {
   const [questions, setQuestions] = useState<Q[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Record<number, number>>({});
   const [submitted, setSubmitted] = useState(false);
 
+  const endpoint = quizSrc ?? `/api/songs/${songId}/quiz`;
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/songs/${songId}/quiz`, { method: "POST" });
-      const data = await res.json();
+      const res = await fetch(endpoint, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't build a quiz");
       setQuestions(data.questions);
       setPicked({});

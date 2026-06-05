@@ -30,6 +30,7 @@ async function findOrCreateUser(email: string, name?: string): Promise<string> {
     name: name || email.split("@")[0],
     emailVerified: null,
     image: null,
+    createdAt: Date.now(),
   });
   return ref.id;
 }
@@ -74,6 +75,19 @@ function buildConfig() {
     trustHost: true,
     providers,
     pages: { signIn: "/signin" },
+    events: {
+      // The Firestore adapter creates OAuth users without our own fields; stamp
+      // createdAt so the admin dashboard can order users by signup time.
+      createUser: async ({ user }: any) => {
+        if (user?.id) {
+          await getDb()
+            .collection("users")
+            .doc(user.id)
+            .set({ createdAt: Date.now() }, { merge: true })
+            .catch(() => {});
+        }
+      },
+    },
     callbacks: {
       jwt({ token, user }: any) {
         if (user) token.sub = user.id;

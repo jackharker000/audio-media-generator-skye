@@ -9,7 +9,7 @@ import type {
 } from "@/db/types";
 import { deleteObject, putObject } from "@/storage";
 import { env } from "@/lib/env";
-import { songsToday } from "@/pipeline/jobStore";
+import { reserveDailyQuota } from "@/pipeline/jobStore";
 import { slugify } from "@/lib/utils";
 import { generateQuiz } from "@/agents/quiz";
 import { getUserLimits } from "@/server/admin";
@@ -135,14 +135,15 @@ export async function startGeneration(
     throw new Error("Your account is disabled. Please contact an administrator.");
   }
   const dailyCap = limits.quotaOverride ?? env.quotaSongsPerDay();
-  if ((await songsToday(userId)) >= dailyCap) {
-    throw new Error(`Daily limit reached (${dailyCap} songs). Try again tomorrow.`);
-  }
 
   const srcSnap = await col(COLLECTIONS.sources).where("projectId", "==", projectId).limit(1).get();
   if (srcSnap.empty) {
     throw new Error("Add at least one source (file or pasted text) before generating.");
   }
+
+  // Reserve quota atomically before creating the job so concurrent submissions
+  // can't all slip past the cap (throws when the daily limit is reached).
+  await reserveDailyQuota(userId, dailyCap);
 
   const now = Date.now();
   const ref = await col(COLLECTIONS.jobs).add({
@@ -190,6 +191,7 @@ export async function regenerateSong(
     genre: overrides.genre ?? song.params.genre,
     voiceGender: overrides.voiceGender ?? song.params.voice?.gender,
     voiceStyle: overrides.voiceStyle ?? song.params.voice?.style,
+    provider: overrides.provider ?? song.params.providerId ?? undefined,
     reuseKnowledgeMapId: song.knowledgeMapId ?? undefined,
     parentSongId: song.id,
     seed: overrides.seed ?? Math.floor(Math.random() * 1_000_000),
@@ -201,7 +203,13 @@ export async function regenerateSong(
 export async function editSong(
   userId: string,
   songId: string,
-  data: { lyrics: string; genre?: string; voiceGender?: JobInputParams["voiceGender"] },
+  data: {
+    lyrics: string;
+    genre?: string;
+    voiceGender?: JobInputParams["voiceGender"];
+    voiceStyle?: JobInputParams["voiceStyle"];
+    provider?: string;
+  },
 ): Promise<string> {
   const song = await getSong(userId, songId);
   if (!song) throw new Error("Song not found");
@@ -209,6 +217,8 @@ export async function editSong(
     lyricsOverride: data.lyrics,
     genre: data.genre ?? song.params.genre,
     voiceGender: data.voiceGender ?? song.params.voice?.gender,
+    voiceStyle: data.voiceStyle ?? song.params.voice?.style,
+    provider: data.provider ?? song.params.providerId ?? undefined,
     reuseKnowledgeMapId: song.knowledgeMapId ?? undefined,
     parentSongId: song.id,
   };
@@ -225,13 +235,16 @@ export async function createShare(
   const song = await getSong(userId, songId);
   if (!song) throw new Error("Song not found");
 
+  // Keep the legacy `isPublic` flag in lockstep with the share's visibility, so
+  // downgrading a public share back to "unlisted" actually removes global access
+  // (previously it left isPublic=true and the song stayed viewable by anyone).
+  const isPublic = visibility === "public";
+
   const existingSnap = await col(COLLECTIONS.shares).where("songId", "==", songId).limit(1).get();
   if (!existingSnap.empty) {
     const existing = withId<DbShare>(existingSnap.docs[0]);
     await col(COLLECTIONS.shares).doc(existing.id).update({ visibility });
-    if (visibility === "public") {
-      await col(COLLECTIONS.songs).doc(songId).update({ isPublic: true });
-    }
+    await col(COLLECTIONS.songs).doc(songId).update({ isPublic });
     return existing.slug;
   }
 
@@ -245,9 +258,7 @@ export async function createShare(
     expiresAt: null,
     createdAt: Date.now(),
   });
-  if (visibility === "public") {
-    await col(COLLECTIONS.songs).doc(songId).update({ isPublic: true });
-  }
+  await col(COLLECTIONS.songs).doc(songId).update({ isPublic });
   return slug;
 }
 
@@ -320,7 +331,19 @@ export async function getOrCreateQuizForViewer(
 ): Promise<QuizQuestion[]> {
   const song = await getViewableSong(viewerId, songId);
   if (!song) throw new Error("Song not found");
+  // Anyone allowed to see the song can take a cached quiz, but only a signed-in
+  // viewer may trigger generation — an anonymous public-share visitor shouldn't
+  // be able to spend Gemini quota on demand.
+  if (song.quiz && song.quiz.length) return song.quiz;
+  if (!viewerId) throw new Error("Sign in to generate a quiz for this song.");
   return quizForSong(song);
+}
+
+/** Quiz for a shared song, authorized by possession of the (unguessable) slug. */
+export async function getOrCreateQuizForShare(slug: string): Promise<QuizQuestion[]> {
+  const found = await getShareBySlug(slug);
+  if (!found) throw new Error("Song not found");
+  return quizForSong(found.song);
 }
 
 export async function deleteSong(userId: string, songId: string): Promise<void> {

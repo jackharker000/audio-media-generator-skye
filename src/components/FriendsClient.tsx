@@ -219,7 +219,7 @@ export function FriendsClient({
                     </p>
                     <p className="text-xs text-slate-500">
                       {item.genre ? genreLabel(item.genre) : "Song"} ·{" "}
-                      {new Date(item.createdAt).toLocaleDateString()}
+                      {new Date(item.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" })}
                     </p>
                   </div>
                 </Link>

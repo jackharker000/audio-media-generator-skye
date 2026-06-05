@@ -35,7 +35,13 @@ export function ProgressTracker({
         /* ignore malformed frame */
       }
     };
-    es.onerror = () => es.close();
+    es.onerror = () => {
+      // EventSource auto-reconnects on transient drops (proxy/idle timeouts that
+      // happen during a 1–2 min render); only surface an error if it's truly closed.
+      if (es.readyState === EventSource.CLOSED) {
+        setError("Lost connection — refresh to check on your song.");
+      }
+    };
     return () => es.close();
   }, [jobId]);
 

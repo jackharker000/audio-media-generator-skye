@@ -12,7 +12,12 @@ export const maxDuration = 300;
  * nothing async to wait on) — which is what keeps it Vercel-friendly without an
  * external orchestrator. The stream closes on success/failure.
  */
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+// ~maxDuration worth of 1.5s polls; stays just under the 300s function cap so
+// the loop bound and the platform timeout agree (was 1200 ticks = 30 min).
+const POLL_MS = 1500;
+const MAX_TICKS = 190;
+
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const userId = await currentUserId();
   if (!userId) return new Response("Unauthorized", { status: 401 });
   const { id } = await ctx.params;
@@ -27,10 +32,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (obj: unknown) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      let closed = false;
+      const send = (obj: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        } catch {
+          closed = true; // controller closed (client gone) — stop sending
+        }
+      };
       try {
-        for (let i = 0; i < 1200; i++) {
+        for (let i = 0; i < MAX_TICKS; i++) {
+          if (req.signal.aborted || closed) break; // client disconnected
           const job = await getJob(userId, id);
           if (!job) {
             send({ error: "not found" });
@@ -43,13 +55,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
             songId: job.songId,
             error: job.error,
           });
-          if (job.status === "succeeded" || job.status === "failed") break;
-          await new Promise((r) => setTimeout(r, 1500));
+          if (closed || job.status === "succeeded" || job.status === "failed") break;
+          await new Promise((r) => setTimeout(r, POLL_MS));
         }
       } catch (e) {
         send({ error: (e as Error).message });
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       }
     },
   });

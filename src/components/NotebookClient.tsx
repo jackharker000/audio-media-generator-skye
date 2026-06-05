@@ -57,7 +57,7 @@ export function NotebookClient({
       const form = new FormData();
       form.append("file", file);
       const res = await fetch(`/api/projects/${projectId}/sources`, { method: "POST", body: form });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed");
       setSources((s) => [...s, data]);
     } catch (e) {
@@ -78,7 +78,7 @@ export function NotebookClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: paste }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed");
       setSources((s) => [...s, data]);
       setPaste("");
@@ -108,7 +108,7 @@ export function NotebookClient({
           targetDurationSec: duration,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not start generation");
       setJobId(data.jobId);
     } catch (e) {
