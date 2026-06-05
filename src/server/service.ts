@@ -283,6 +283,29 @@ export async function getShareBySlug(
   return { share, song, facts: await factsForSong(song), lines: song.lineFactMap ?? [] };
 }
 
+/**
+ * Lightweight share lookup for page metadata and the social preview image —
+ * just the fields a card needs, skipping the knowledge-map read `getShareBySlug`
+ * does for the full study view.
+ */
+export async function getShareCard(
+  slug: string,
+): Promise<{ id: string; title: string; description: string | null; genre?: string } | null> {
+  const snap = await col(COLLECTIONS.shares).where("slug", "==", slug).limit(1).get();
+  if (snap.empty) return null;
+  const share = withId<DbShare>(snap.docs[0]);
+  if (share.expiresAt && share.expiresAt < Date.now()) return null;
+  const songSnap = await col(COLLECTIONS.songs).doc(share.songId).get();
+  if (!songSnap.exists) return null;
+  const song = withId<DbSong>(songSnap);
+  return {
+    id: song.id,
+    title: song.title,
+    description: song.description ?? null,
+    genre: song.params?.genre,
+  };
+}
+
 // ---- Study features (facts, quiz, deletion) -------------------------------
 
 async function factsForSong(song: DbSong): Promise<Fact[]> {
